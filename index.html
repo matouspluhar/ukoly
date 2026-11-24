@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Úkoly</title>
+  <meta name="theme-color" content="#ffffff">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icons/icon-192.png">
+  <link rel="apple-touch-icon" href="icons/icon-192.png">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header>
+    <nav class="tabs">
+      <button class="tab" data-view="den">MŮJ DEN <span class="n" id="count-den"></span></button>
+      <button class="tab" data-view="vse">VŠECHNY <span class="n" id="count-vse"></span></button>
+    </nav>
+    <button id="refresh" class="icon" aria-label="Obnovit">↻</button>
+  </header>
+
+  <form id="add" autocomplete="off">
+    <input id="add-input" type="text" placeholder="+ Přidat úkol" enterkeyhint="done" aria-label="Nový úkol">
+  </form>
+
+  <ul id="list"></ul>
+
+  <footer>
+    <span id="status"></span>
+    <span class="who"><span id="who"></span> <button id="logout" class="link">odhlásit</button></span>
+  </footer>
+
+  <div id="signin" hidden>
+    <h1>ÚKOLY</h1>
+    <p>Okno do složky MYSLENI/UKOLY na OneDrivu Onswerku.</p>
+    <button id="login" class="primary">PŘIHLÁSIT SE</button>
+  </div>
+
+  <section id="detail" hidden>
+    <div class="d-bar">
+      <button id="d-back" class="link">← ZPĚT</button>
+      <button id="d-done" class="link">HOTOVO ○</button>
+    </div>
+    <textarea id="d-name" rows="2" aria-label="Název"></textarea>
+    <div id="d-job" class="job"></div>
+    <label>POZNÁMKA
+      <textarea id="d-note" rows="5"></textarea>
+    </label>
+    <label>TERMÍN
+      <span class="due"><input id="d-due" type="date"><button id="d-due-clear" class="link">zrušit</button></span>
+    </label>
+    <div class="toggles">
+      <button id="d-myday" class="toggle">PŘIDAT DO MÉHO DNE</button>
+      <button id="d-fire" class="toggle fire">🔥</button>
+    </div>
+    <h2>SOUVISLOSTI</h2>
+    <div id="d-souv" class="souv"></div>
+    <p id="d-meta" class="meta"></p>
+  </section>
+
+  <div id="toast" hidden></div>
+
+  <script src="vendor/msal-browser.min.js"></script>
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>
