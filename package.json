@@ -1,0 +1,1 @@
+{ "name": "ukoly", "private": true, "type": "module", "scripts": { "test": "node test/format.test.mjs && node test/group.test.mjs && node test/sync.test.mjs" } }

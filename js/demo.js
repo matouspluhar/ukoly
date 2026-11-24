@@ -10,10 +10,11 @@ function seed() {
   const today = localDate();
   const files = {};
   const add = (id, name, text) => { files[id] = { id, name, parent: UKOLY, text, v: 1 }; };
-  add('d1', '20261124-1631 koupit-mleko.md', applyPatch(newTaskText({ nazev: 'Koupit mléko', note: 'mléko, rohlíky, maso' }), { fields: { muj_den: today } }).replace('zdroj: app', 'zdroj: claude'));
-  add('d2', '20261120-0900 odevzdat-dps-fasady-zs.md', newTaskText({ nazev: 'Odevzdat DPS fasády ZŠ', termin: today, ohen: true }).replace('zakazka:', 'zakazka: 2612').replace('## Souvislosti\n', '## Souvislosti\nNavazuje na schůzku s Adamem Kučerou. Před odevzdáním projít prospekty Baumit.\n'));
-  add('d3', '20261121-1015 zavolat-ive-rausch.md', newTaskText({ nazev: 'Zavolat Ivě Rausch', termin: '2026-12-01' }).replace('zakazka:', 'zakazka: 2609'));
+  add('d1', '20261124-1631 koupit-mleko.md', applyPatch(newTaskText({ nazev: 'Koupit mléko', note: 'mléko, rohlíky, máslo' }), { fields: { muj_den: today } }).replace('zdroj: app', 'zdroj: claude'));
+  add('d2', '20261120-0900 skola-odevzdat-dps-fasady.md', newTaskText({ nazev: 'Škola – odevzdat DPS fasády', termin: today, ohen: true }).replace('zakazka:', 'zakazka: 2612').replace('## Souvislosti\n', '## Souvislosti\nNavazuje na kontrolu detailů oplechování. Před odevzdáním projít katalogové listy.\n'));
+  add('d3', '20261121-1015 zavolat-investorovi.md', newTaskText({ nazev: 'Zavolat investorovi kvůli statice', termin: '2026-12-01' }).replace('zakazka:', 'zakazka: 2609'));
   add('d4', '20261122-1800 precist-kapitolu-o-zettelkastenu.md', newTaskText({ nazev: 'Přečíst kapitolu o Zettelkastenu' }));
+  add('d5', '20261122-1900 penize-zalohy.md', newTaskText({ nazev: 'Peníze – zkontrolovat zálohy' }));
   return { files };
 }
 
@@ -38,7 +39,10 @@ export function createDemoBackend() {
     userName: () => 'demo',
     login() {}, reauth() {}, logout() { window.demoReset(); location.reload(); },
     folderId: async () => UKOLY,
+    async zakazky() { await guard(); return state.zakazky ?? '- 2612 ZŠ Ukázková\n- 2609 Bytový dům Ukázka'; },
     async list() { await guard(); return Object.values(state.files).filter((f) => f.parent === UKOLY).map(item); },
+    async listDone() { await guard(); return Object.values(state.files).filter((f) => f.parent === HOTOVO).map(item); },
+    doneFolderId: async () => HOTOVO,
     async getItem(id) { await guard(); return item(get(id)); },
     async getText(it) { await guard(); return get(it.id).text; },
     async put(id, text, eTag) {
@@ -52,12 +56,13 @@ export function createDemoBackend() {
       const id = 'n' + Date.now() + Math.random().toString(36).slice(2, 6);
       state.files[id] = { id, name, parent: UKOLY, text, v: 1 }; save(); return item(state.files[id]);
     },
-    async moveToDone(id, eTag, newName) {
+    async move(id, eTag, toDone, newName) {
       await guard(); const f = get(id);
       if (eTag !== item(f).eTag) throw new GraphError(412);
+      const target = toDone ? HOTOVO : UKOLY;
       const name = newName || f.name;
-      if (Object.values(state.files).some((x) => x.parent === HOTOVO && x.name === name)) throw new GraphError(409);
-      f.parent = HOTOVO; f.name = name; f.v++; save(); return item(f);
+      if (Object.values(state.files).some((x) => x !== f && x.parent === target && x.name === name)) throw new GraphError(409);
+      f.parent = target; f.name = name; f.v++; save(); return item(f);
     },
   };
 }

@@ -8,54 +8,65 @@
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="icon" href="icons/icon-192.png">
   <link rel="apple-touch-icon" href="icons/icon-192.png">
+  <link rel="preload" href="fonts/ibm-plex-sans-latin-ext-500-normal.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-  <header>
-    <nav class="tabs">
-      <button class="tab" data-view="den">MŮJ DEN <span class="n" id="count-den"></span></button>
-      <button class="tab" data-view="vse">VŠECHNY <span class="n" id="count-vse"></span></button>
-    </nav>
-    <button id="refresh" class="icon" aria-label="Obnovit">↻</button>
-  </header>
+  <div class="page">
+    <header class="mast">
+      <div class="mast-top">
+        <span class="mark">ÚKOLY</span>
+        <span id="today" class="today"></span>
+        <button id="refresh" class="icon" aria-label="Obnovit"><svg viewBox="0 0 24 24" width="18" height="18"><path d="M20 12a8 8 0 1 1-2.34-5.66M20 4v4.5h-4.5" fill="none" stroke="currentColor" stroke-width="1.5"/></svg></button>
+      </div>
+      <nav class="tabs">
+        <button class="tab" data-view="den"><span class="t">Můj den</span><span class="n" id="count-den"></span></button>
+        <button class="tab" data-view="vse"><span class="t">Všechny</span><span class="n" id="count-vse"></span></button>
+      </nav>
+      <div id="progress" class="progress" hidden></div>
+    </header>
 
-  <form id="add" autocomplete="off">
-    <input id="add-input" type="text" placeholder="+ Přidat úkol" enterkeyhint="done" aria-label="Nový úkol">
-  </form>
+    <form id="add" autocomplete="off">
+      <span class="plus">+</span>
+      <input id="add-input" type="text" placeholder="Přidat úkol" enterkeyhint="done" aria-label="Nový úkol">
+    </form>
 
-  <ul id="list"></ul>
+    <main id="list"></main>
 
-  <footer>
-    <span id="status"></span>
-    <span class="who"><span id="who"></span> <button id="logout" class="link">odhlásit</button></span>
-  </footer>
+    <footer>
+      <span id="status"></span>
+      <span class="who"><span id="who"></span> · <button id="logout" class="link">odhlásit</button></span>
+    </footer>
+  </div>
 
   <div id="signin" hidden>
-    <h1>ÚKOLY</h1>
-    <p>Okno do složky MYSLENI/UKOLY na OneDrivu Onswerku.</p>
-    <button id="login" class="primary">PŘIHLÁSIT SE</button>
+    <span class="mark big">ÚKOLY</span>
+    <p>Okno do složky MYSLENI/UKOLY</p>
+    <button id="login" class="primary">Přihlásit se</button>
   </div>
 
   <section id="detail" hidden>
-    <div class="d-bar">
-      <button id="d-back" class="link">← ZPĚT</button>
-      <button id="d-done" class="link">HOTOVO ○</button>
+    <div class="d-wrap">
+      <div class="d-bar">
+        <button id="d-back" class="link strong">← Zpět</button>
+        <button id="d-done" class="link strong">Hotovo</button>
+      </div>
+      <div id="d-group" class="d-group"></div>
+      <textarea id="d-name" rows="2" aria-label="Název"></textarea>
+      <dl class="spec">
+        <dt>Termín</dt>
+        <dd class="due"><input id="d-due" type="date"><button id="d-due-clear" class="link">zrušit</button></dd>
+        <dt>Můj den</dt>
+        <dd><button id="d-myday" class="switch" role="switch"><span></span></button></dd>
+        <dt>Oheň 🔥</dt>
+        <dd><button id="d-fire" class="switch fire" role="switch"><span></span></button></dd>
+      </dl>
+      <h2>Poznámka</h2>
+      <textarea id="d-note" rows="4" placeholder="—"></textarea>
+      <h2>Souvislosti <span class="by">Claude</span></h2>
+      <div id="d-souv" class="souv"></div>
+      <p id="d-meta" class="meta"></p>
     </div>
-    <textarea id="d-name" rows="2" aria-label="Název"></textarea>
-    <div id="d-job" class="job"></div>
-    <label>POZNÁMKA
-      <textarea id="d-note" rows="5"></textarea>
-    </label>
-    <label>TERMÍN
-      <span class="due"><input id="d-due" type="date"><button id="d-due-clear" class="link">zrušit</button></span>
-    </label>
-    <div class="toggles">
-      <button id="d-myday" class="toggle">PŘIDAT DO MÉHO DNE</button>
-      <button id="d-fire" class="toggle fire">🔥</button>
-    </div>
-    <h2>SOUVISLOSTI</h2>
-    <div id="d-souv" class="souv"></div>
-    <p id="d-meta" class="meta"></p>
   </section>
 
   <div id="toast" hidden></div>

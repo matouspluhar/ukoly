@@ -5,7 +5,7 @@ const GRAPH = 'https://graph.microsoft.com/v1.0';
 const SCOPES = ['Files.ReadWrite'];
 
 export class GraphError extends Error {
-  constructor(status, msg) { super(msg || `Graph ${status}`); this.status = status; }
+  constructor(status, msg, retryAfter) { super(msg || `Graph ${status}`); this.status = status; this.retryAfter = retryAfter; }
 }
 export class OfflineError extends Error { constructor(e) { super('offline'); this.cause = e; } }
 export class AuthError extends Error { constructor(e) { super('auth'); this.cause = e; } }
@@ -18,6 +18,7 @@ const toItem = (j) => ({
   parentId: j.parentReference?.id,
   downloadUrl: j['@microsoft.graph.downloadUrl'],
   isFile: !!j.file,
+  modified: j.lastModifiedDateTime,
 });
 
 export function appBaseUrl() { return new URL('./', location.href).href; }
@@ -28,10 +29,13 @@ export function createGraphBackend() {
   let account = null;
   const folderIds = {};
 
+  let cached = null; // { token, exp }
   async function token() {
     if (!account) throw new AuthError();
+    if (cached && cached.exp - Date.now() > 120000) return cached.token;
     try {
       const r = await pca.acquireTokenSilent({ scopes: SCOPES, account });
+      cached = { token: r.accessToken, exp: r.expiresOn ? r.expiresOn.getTime() : Date.now() + 600000 };
       return r.accessToken;
     } catch (e) {
       if (e instanceof msal.InteractionRequiredAuthError) throw new AuthError(e);
@@ -48,8 +52,8 @@ export function createGraphBackend() {
         method, body, headers: { Authorization: 'Bearer ' + t, ...headers },
       });
     } catch (e) { throw new OfflineError(e); }
-    if (res.status === 401) throw new AuthError();
-    if (!res.ok) throw new GraphError(res.status, await res.text().catch(() => ''));
+    if (res.status === 401) { cached = null; throw new AuthError(); }
+    if (!res.ok) throw new GraphError(res.status, await res.text().catch(() => ''), Number(res.headers.get('Retry-After')) || 0);
     return res;
   }
 
@@ -92,9 +96,15 @@ export function createGraphBackend() {
 
     folderId: () => folderId(CONFIG.folder),
 
-    async list() {
+    // Názvy zakázek drží soukromý soubor na OneDrivu, ne veřejný kód.
+    async zakazky() {
+      try { return await (await req('GET', `/me/drive/root:/${encPath(CONFIG.zakazkyFile)}:/content`)).text(); }
+      catch (e) { if (e.status === 404) return ''; throw e; }
+    },
+
+    async list(path = CONFIG.folder) {
       const items = [];
-      let url = `/me/drive/root:/${encPath(CONFIG.folder)}:/children?$top=200`;
+      let url = `/me/drive/root:/${encPath(path)}:/children?$top=200`;
       while (url) {
         const j = await (await req('GET', url)).json();
         for (const it of j.value) if (it.file && it.name.toLowerCase().endsWith('.md')) items.push(toItem(it));
@@ -102,6 +112,15 @@ export function createGraphBackend() {
       }
       return items;
     },
+
+    // Hotové úkoly změněné za posledních `days` dní.
+    async listDone(days = 14) {
+      const since = Date.now() - days * 86400000;
+      try { return (await this.list(CONFIG.doneFolder)).filter((it) => Date.parse(it.modified) >= since); }
+      catch (e) { if (e.status === 404) return []; throw e; }
+    },
+
+    doneFolderId: () => folderId(CONFIG.doneFolder),
 
     async getItem(id) {
       return toItem(await (await req('GET', `/me/drive/items/${id}`)).json());
@@ -132,8 +151,8 @@ export function createGraphBackend() {
       return toItem(await r.json());
     },
 
-    async moveToDone(id, eTag, newName) {
-      const body = { parentReference: { id: await folderId(CONFIG.doneFolder) } };
+    async move(id, eTag, toDone, newName) {
+      const body = { parentReference: { id: await folderId(toDone ? CONFIG.doneFolder : CONFIG.folder) } };
       if (newName) body.name = newName;
       const r = await req('PATCH', `/me/drive/items/${id}?@microsoft.graph.conflictBehavior=fail`, {
         body: JSON.stringify(body), headers: { 'Content-Type': 'application/json', 'If-Match': eTag },

@@ -1,13 +1,22 @@
-// Service worker: aplikace se otevře i bez sítě. Data (Graph) neukládá – ta drží IndexedDB.
-const VERSION = 'ukoly-v1';
+// Service worker: aplikace startuje okamžitě z mezipaměti a funguje bez sítě.
+// Nová verze = změnit VERSION. Prohlížeč pak stáhne celé nové vydání na pozadí
+// a aplikace nabídne „Načíst“. Data (Graph) se tu neukládají – ty drží IndexedDB.
+const VERSION = 'ukoly-v5';
 const SHELL = [
   './', 'index.html', 'styles.css', 'config.js', 'manifest.webmanifest',
   'js/app.js', 'js/format.js', 'js/graph.js', 'js/demo.js', 'js/store.js', 'js/sync.js',
-  'vendor/msal-browser.min.js', 'icons/icon-192.png', 'icons/icon-512.png', 'icons/maskable-512.png',
+  'vendor/msal-browser.min.js',
+  'fonts/ibm-plex-sans-latin-400-normal.woff2', 'fonts/ibm-plex-sans-latin-500-normal.woff2', 'fonts/ibm-plex-sans-latin-600-normal.woff2',
+  'fonts/ibm-plex-sans-latin-ext-400-normal.woff2', 'fonts/ibm-plex-sans-latin-ext-500-normal.woff2', 'fonts/ibm-plex-sans-latin-ext-600-normal.woff2',
+  'fonts/barlow-condensed-latin-600-normal.woff2', 'fonts/barlow-condensed-latin-ext-600-normal.woff2',
+  'icons/icon-192.png', 'icons/icon-512.png', 'icons/maskable-512.png',
 ];
 
 self.addEventListener('install', (e) => {
-  e.waitUntil(caches.open(VERSION).then((c) => c.addAll(SHELL)).then(() => self.skipWaiting()));
+  // cache: 'reload' obejde HTTP mezipaměť GitHub Pages, ať se nemíchají verze.
+  e.waitUntil(caches.open(VERSION)
+    .then((c) => c.addAll(SHELL.map((u) => new Request(u, { cache: 'reload' }))))
+    .then(() => self.skipWaiting()));
 });
 
 self.addEventListener('activate', (e) => {
@@ -16,20 +25,21 @@ self.addEventListener('activate', (e) => {
     .then(() => self.clients.claim()));
 });
 
-// Nejdřív síť (aby se nová verze projevila hned), bez sítě z mezipaměti.
 self.addEventListener('fetch', (e) => {
   const req = e.request;
   const url = new URL(req.url);
   if (req.method !== 'GET' || url.origin !== location.origin) return;
-  e.respondWith((async () => {
-    const cache = await caches.open(VERSION);
+  // Návrat z přihlášení (?code=…) i běžné otevření = vždy stejný index.html z mezipaměti.
+  const key = req.mode === 'navigate' ? 'index.html' : req;
+  e.respondWith(caches.open(VERSION).then(async (cache) => {
+    const hit = await cache.match(key, { ignoreSearch: req.mode === 'navigate' });
+    if (hit) return hit;
     try {
       const res = await fetch(req);
-      if (res.ok) cache.put(req.mode === 'navigate' ? './' : req, res.clone());
+      if (res.ok && url.pathname.match(/\.(js|css|woff2|png|webmanifest|html)$/)) cache.put(req, res.clone());
       return res;
     } catch {
-      return (await cache.match(req.mode === 'navigate' ? './' : req, { ignoreSearch: true }))
-        || (await cache.match('index.html')) || Response.error();
+      return (await cache.match('index.html')) || Response.error();
     }
-  })());
+  }));
 });

@@ -171,3 +171,67 @@ export function compareTasks(a, b) {
 
 export function isOpen(t) { return (t.fm.stav || 'otevreno') === 'otevreno'; }
 export function inMyDay(t, today = localDate()) { return t.fm.muj_den === today || t.fm.termin === today; }
+
+// ---------- skupiny podle zakázky ----------
+// Soubor MYSLENI/ZAKAZKY.md: řádky „- 2620 Paseka“ nebo „- HSN Hlavně se neposrat“ (kód, mezera, název).
+export function parseZakazky(text) {
+  const map = {};
+  for (const line of normalize(text).split('\n')) {
+    const m = line.match(/^\s*(?:[-*]\s*)?\|?\s*(\d{4}|[A-ZÁČĎÉĚÍŇÓŘŠŤÚŮÝŽ]{2,8})\s*[|–—:-]?\s*([^|]+?)\s*\|?\s*$/);
+    if (m) map[m[1]] = m[2];
+  }
+  return map;
+}
+
+// „Paseka – zpracovat…“ → { prefix: 'Paseka', rest: 'zpracovat…' }
+const PREFIX_RE = /^\s*([^–—\-:]{2,24}?)\s+[–—-]\s+(.+)$/;
+export function splitPrefix(nazev) {
+  const m = String(nazev || '').match(PREFIX_RE);
+  return m ? { prefix: m[1].trim(), rest: m[2].trim() } : { prefix: '', rest: String(nazev || '') };
+}
+
+const fold = (s) => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+
+// Skupina úkolu: zakázka (číslo + název), jinak předpona názvu, jinak Ostatní.
+export function groupOf(t, names = {}) {
+  const z = String(t.fm.zakazka || '').trim();
+  const { prefix, rest } = splitPrefix(t.fm.nazev);
+  if (z && !/^\d/.test(z)) {
+    // Kód oblasti (HSN, OSOBNÍ): stačí samotný kód jako nadpis.
+    const strip = prefix && fold(prefix) === fold(z);
+    return { key: 'z:' + z, num: '', label: z, title: strip ? rest : t.fm.nazev };
+  }
+  if (z) {
+    const label = names[z] || prefix || '';
+    const strip = prefix && (!names[z] || fold(names[z]).startsWith(fold(prefix)) || fold(prefix).startsWith(fold(names[z])));
+    return { key: 'z:' + z, num: z, label, title: strip ? rest : t.fm.nazev };
+  }
+  if (prefix) return { key: 'p:' + fold(prefix), num: '', label: prefix, title: rest };
+  return { key: 'ostatni', num: '', label: 'Ostatní', title: t.fm.nazev || '' };
+}
+
+export function groupTasks(list, names = {}) {
+  const groups = new Map();
+  for (const t of [...list].sort(compareTasks)) {
+    const g = groupOf(t, names);
+    if (!groups.has(g.key)) groups.set(g.key, { ...g, items: [] });
+    groups.get(g.key).items.push({ t, title: g.title });
+  }
+  // Pořadí skupin podle nejnaléhavějšího úkolu uvnitř, Ostatní na konec.
+  return [...groups.values()].sort((a, b) => {
+    if (a.key === 'ostatni') return 1;
+    if (b.key === 'ostatni') return -1;
+    return compareTasks(a.items[0].t, b.items[0].t);
+  });
+}
+
+const DNY = ['ne', 'po', 'út', 'st', 'čt', 'pá', 'so'];
+export function dueLabel(termin, today = localDate()) {
+  if (!termin) return null;
+  const [y, m, d] = termin.split('-').map(Number);
+  const date = new Date(y, m - 1, d);
+  const [ty, tm, td] = today.split('-').map(Number);
+  const diff = Math.round((date - new Date(ty, tm - 1, td)) / 86400000);
+  const text = diff === 0 ? 'dnes' : diff === 1 ? 'zítra' : diff > 1 && diff < 7 ? `${DNY[date.getDay()]} ${d}. ${m}.` : `${d}. ${m}.`;
+  return { text, overdue: diff < 0, today: diff === 0 };
+}

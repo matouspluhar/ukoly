@@ -7,6 +7,15 @@ import { GraphError, OfflineError, AuthError } from './graph.js';
 
 const MAX_RETRY = 4;
 const PARALLEL = 6;
+const TRANSIENT = new Set([408, 423, 429, 500, 502, 503, 504]);
+
+// Chyba, kterou má smysl zkusit znovu později (síť, přetížený server, zamčený soubor).
+export const isTransient = (e) => e instanceof OfflineError || (e instanceof GraphError && TRANSIENT.has(e.status));
+// Chyba, kterou opakování nespraví – operace jde stranou, aby neblokovala frontu.
+export const isFatal = (e) => e instanceof GraphError && !TRANSIENT.has(e.status) && e.status !== 401;
+
+// Jeden synchronizátor napříč okny téže aplikace (nainstalovaná appka + karta v prohlížeči).
+const withLock = (fn) => (globalThis.navigator?.locks ? navigator.locks.request('ukoly-sync', fn) : fn());
 
 export function makeTask(id, name, text, eTag, extra = {}) {
   const p = parseTask(text);
@@ -36,7 +45,8 @@ export class Sync {
 
   async pendingCount() { return (await this.db.all('queue')).length; }
 
-  kick() {
+  kick(delay = 0) {
+    if (delay) { clearTimeout(this.timer); this.timer = setTimeout(() => this.kick(), delay); return; }
     if (this.running) { this.again = true; return; }
     this.run();
   }
@@ -45,14 +55,23 @@ export class Sync {
     this.running = true;
     this.onStatus({ state: 'sync' });
     try {
-      const drained = await this.drain();
-      if (drained) await this.refresh();
+      await withLock(async () => {
+        await this.drain();
+        await this.refresh();
+      });
+      this.backoff = 0;
       const pending = await this.pendingCount();
-      this.onStatus({ state: 'ok', at: new Date(), pending });
+      const dead = (await this.db.getMeta('dead', [])).length;
+      this.onStatus({ state: dead ? 'error' : 'ok', at: new Date(), pending, msg: dead ? `${dead} změn nešlo zapsat` : '' });
     } catch (e) {
       const pending = await this.pendingCount().catch(() => 0);
-      if (e instanceof OfflineError) this.onStatus({ state: 'offline', pending });
-      else if (e instanceof AuthError) this.onStatus({ state: 'auth', pending });
+      if (isTransient(e)) {
+        // Exponenciální odstup 2 s → 60 s, nebo podle Retry-After ze serveru.
+        this.backoff = Math.min(60000, (this.backoff || 1000) * 2);
+        const wait = e.retryAfter ? e.retryAfter * 1000 : this.backoff;
+        if (globalThis.navigator?.onLine !== false) this.kick(wait);
+        this.onStatus({ state: e instanceof OfflineError ? 'offline' : 'retry', pending });
+      } else if (e instanceof AuthError) this.onStatus({ state: 'auth', pending });
       else { console.error(e); this.onStatus({ state: 'error', msg: e.message, pending }); }
     } finally {
       this.running = false;
@@ -65,27 +84,40 @@ export class Sync {
     return (await this.db.getMeta('id:' + id)) || null;
   }
 
-  // Odešle frontu. Vrací false, když čeká operace s odkladem (odškrtnutí – 5 s na vrácení).
+  // Odešle frontu v pořadí. Operace s odkladem (odškrtnutí – 5 s na vrácení) blokuje jen
+  // další změny téhož úkolu, ostatní projdou. Neopravitelná chyba odloží operaci stranou.
   async drain() {
     const ops = (await this.db.all('queue')).sort((a, b) => a.seq - b.seq);
+    const blocked = new Set();
+    let wake = Infinity;
     for (const op of ops) {
+      const key = op.taskId || op.tempId;
+      if (blocked.has(key)) continue;
       if (op.notBefore && op.notBefore > Date.now()) {
-        clearTimeout(this.timer);
-        this.timer = setTimeout(() => this.kick(), op.notBefore - Date.now() + 100);
-        return false;
+        blocked.add(key);
+        wake = Math.min(wake, op.notBefore);
+        continue;
       }
-      const still = await this.db.get('queue', op.seq);
-      if (!still) continue;
-      await this.process(op);
+      if (!(await this.db.get('queue', op.seq))) continue; // mezitím zrušeno
+      try {
+        await this.process(op);
+      } catch (e) {
+        if (!isFatal(e)) throw e;
+        const dead = await this.db.getMeta('dead', []);
+        dead.push({ op, status: e.status, at: new Date().toISOString() });
+        await this.db.setMeta('dead', dead.slice(-50));
+        console.warn('Operace odložena', op, e);
+      }
       await this.db.del('queue', op.seq);
     }
-    return true;
+    if (wake < Infinity) this.kick(wake - Date.now() + 100);
   }
 
   async process(op) {
     if (op.type === 'create') return this.doCreate(op);
     if (op.type === 'update') return this.doUpdate(op);
     if (op.type === 'done') return this.doDone(op);
+    if (op.type === 'reopen') return this.doReopen(op);
   }
 
   async doCreate(op) {
@@ -138,34 +170,70 @@ export class Sync {
     const id = await this.resolve(op.taskId);
     if (!id) return;
     const ukolyId = await this.b.folderId();
+    let final = null;
     for (let i = 0; i < MAX_RETRY; i++) {
       let it;
       try { it = await this.b.getItem(id); } catch (e) { if (e.status === 404) break; throw e; }
-      if (it.parentId !== ukolyId) break; // už je v HOTOVO (nebo jinde) – hotovo
       const text = await this.b.getText(it);
+      if (it.parentId !== ukolyId) { final = { it, text }; break; } // už je v HOTOVO
       const p = parseTask(text);
-      let eTag = it.eTag;
+      let eTag = it.eTag, next = text;
       try {
         if (p.fm.stav !== 'hotovo') {
-          const next = applyPatch(text, { fields: { stav: 'hotovo', hotovo: op.at } });
+          next = applyPatch(text, { fields: { stav: 'hotovo', hotovo: op.at } });
           eTag = (await this.b.put(id, next, eTag)).eTag;
         }
-        try { await this.b.moveToDone(id, eTag); }
+        let moved;
+        try { moved = await this.b.move(id, eTag, true); }
         catch (e) {
           if (e.status !== 409) throw e;
-          await this.b.moveToDone(id, eTag, it.name.replace(/\.md$/, `-${Date.now() % 100000}.md`));
+          moved = await this.b.move(id, eTag, true, it.name.replace(/\.md$/, `-${Date.now() % 100000}.md`));
         }
+        final = { it: moved, text: next };
         break;
       } catch (e) { if (e.status === 412) continue; throw e; }
     }
-    await this.db.del('tasks', op.taskId);
-    await this.db.del('tasks', id);
+    if (op.taskId !== id) await this.db.del('tasks', op.taskId);
+    // Hotový úkol zůstává v místní paměti – ukazuje se ve sbalené sekci Hotovo.
+    if (final && !(await this.hasLaterOps(op.taskId, op.seq))) await this.db.put('tasks', makeTask(id, final.it.name, final.text, final.it.eTag));
+    else if (!final) await this.db.del('tasks', id);
     await this.emit();
+  }
+
+  // Vrácení hotového úkolu mezi otevřené: stav otevreno, hotovo prázdné, přesun zpět do UKOLY.
+  async doReopen(op) {
+    const id = await this.resolve(op.taskId);
+    if (!id) return;
+    const doneId = await this.b.doneFolderId();
+    for (let i = 0; i < MAX_RETRY; i++) {
+      let it;
+      try { it = await this.b.getItem(id); } catch (e) { if (e.status === 404) return; throw e; }
+      const text = await this.b.getText(it);
+      const next = applyPatch(text, { fields: { stav: 'otevreno', hotovo: '' } });
+      try {
+        let eTag = it.eTag;
+        if (next !== text) eTag = (await this.b.put(id, next, eTag)).eTag;
+        let moved = it;
+        if (it.parentId === doneId) {
+          try { moved = await this.b.move(id, eTag, false); }
+          catch (e) {
+            if (e.status !== 409) throw e;
+            moved = await this.b.move(id, eTag, false, it.name.replace(/\.md$/, `-${Date.now() % 100000}.md`));
+          }
+        }
+        if (!(await this.hasLaterOps(op.taskId, op.seq))) await this.db.put('tasks', makeTask(id, moved.name, next, moved.eTag));
+        await this.emit();
+        return;
+      } catch (e) { if (e.status === 412) continue; throw e; }
+    }
+    throw new Error('Úkol se pořád mění, zkusím později');
   }
 
   // Načte seznam z OneDrivu; stahuje jen soubory se změněným eTagem.
   async refresh() {
-    const items = await this.b.list();
+    const open = await this.b.list();
+    const done = await this.b.listDone(14);
+    const items = open.concat(done);
     const queue = await this.db.all('queue');
     const pending = new Set();
     for (const o of queue) {
@@ -178,8 +246,13 @@ export class Sync {
 
     for (let i = 0; i < toFetch.length; i += PARALLEL) {
       await Promise.all(toFetch.slice(i, i + PARALLEL).map(async (it) => {
-        const text = await this.b.getText(it);
-        await this.db.put('tasks', makeTask(it.id, it.name, text, it.eTag));
+        try {
+          const text = await this.b.getText(it);
+          await this.db.put('tasks', makeTask(it.id, it.name, text, it.eTag));
+        } catch (e) {
+          if (!isFatal(e)) throw e; // síť → celá obnova později
+          console.warn('Soubor nejde načíst', it.name, e);
+        }
       }));
     }
     const serverIds = new Set(items.map((it) => it.id));
@@ -189,5 +262,14 @@ export class Sync {
     await this.emit();
   }
 
-  async emit() { this.onTasks(await this.db.all('tasks')); }
+  // Víc změn v rychlém sledu = jedno překreslení.
+  emit() {
+    if (!this.emitting) {
+      this.emitting = Promise.resolve().then(async () => {
+        this.emitting = null;
+        this.onTasks(await this.db.all('tasks'));
+      });
+    }
+    return this.emitting;
+  }
 }

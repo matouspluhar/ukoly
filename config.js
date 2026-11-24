@@ -4,4 +4,5 @@ export const CONFIG = {
   tenantId: 'daa38f2d-468e-4361-a654-cd902c7233f7',
   folder: 'MYSLENI/UKOLY',
   doneFolder: 'MYSLENI/UKOLY/HOTOVO',
+  zakazkyFile: 'MYSLENI/ZAKAZKY.md',
 };
