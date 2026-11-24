@@ -137,11 +137,11 @@ body.demo footer::before { content: "DEMO"; font-family: var(--cond); font-weigh
 .spec dt { font-size: 11px; font-weight: 600; letter-spacing: .14em; text-transform: uppercase; color: var(--grey); }
 .spec .due { gap: 16px; font-family: var(--sans); text-transform: none; letter-spacing: 0; }
 #d-due { font: inherit; font-size: 15px; border: 0; padding: 0; color: var(--ink); background: transparent; }
-.switch { width: 40px; height: 22px; border: 1.25px solid var(--ink); border-radius: 11px; position: relative; transition: background .15s; }
-.switch span { position: absolute; top: 3px; left: 3px; width: 14px; height: 14px; border-radius: 50%; background: var(--ink); transition: transform .15s; }
-.switch.on { background: var(--ink); }
-.switch.on span { background: #fff; transform: translateX(18px); }
-.switch.fire.on { background: var(--accent); border-color: var(--accent); }
+button.switch { width: 40px; height: 22px; border: 1.25px solid var(--ink); border-radius: 11px; position: relative; transition: background .15s; }
+button.switch span { position: absolute; top: 3px; left: 3px; width: 14px; height: 14px; border-radius: 50%; background: var(--ink); transition: transform .15s; }
+button.switch.on { background: var(--ink); }
+button.switch.on span { background: #fff; transform: translateX(18px); }
+button.switch.fire.on { background: var(--accent); border-color: var(--accent); }
 #detail h2 { font-size: 11px; font-weight: 600; letter-spacing: .14em; text-transform: uppercase; color: var(--grey); margin: 34px 0 10px; display: flex; justify-content: space-between; }
 #detail h2 .by { letter-spacing: .06em; text-transform: none; font-weight: 400; }
 #d-note { display: block; width: 100%; font: inherit; font-size: 16px; line-height: 1.5; border: 0; border-left: 1px solid var(--line); padding: 2px 0 2px 14px; outline: none; resize: vertical; color: var(--ink); }
@@ -177,7 +177,24 @@ body.demo footer::before { content: "DEMO"; font-family: var(--cond); font-weigh
 /* plynulost a dotyk */
 button, .row, summary { touch-action: manipulation; }
 body { overscroll-behavior-y: contain; }
-#list.switch { animation: fade .16s ease-out; }
+#list.view-in { animation: fade .16s ease-out; }
 @keyframes fade { from { opacity: 0; transform: translateY(4px); } }
 #refresh { transition: transform .1s; }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
+
+/* formát v2: krok, čekání, odhad, plán, odkazy, průběh */
+.sub { display: block; font-size: 13px; color: var(--grey); margin-top: 3px; line-height: 1.35; }
+.sub.wait { color: var(--ink); font-style: italic; }
+.row.waiting .title { color: var(--grey); }
+.row.waiting .check { border-style: dashed; }
+.est { font-family: var(--cond); font-weight: 600; font-size: 13px; letter-spacing: .04em; color: var(--soft); white-space: nowrap; }
+.spec.plan { margin-top: 0; border-top: 0; }
+.spec.plan dd { display: block; font-size: 15px; line-height: 1.4; }
+.spec.plan dd i { display: inline-block; font-style: normal; color: var(--accent); font-size: 10.5px; font-weight: 600; letter-spacing: .1em; text-transform: uppercase; margin-left: 8px; }
+.links { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 18px; }
+.links a { border: 1px solid var(--ink); padding: 8px 12px; font-size: 13px; font-weight: 600; color: var(--ink); text-decoration: none; }
+.log { margin-top: 30px; }
+.log summary { cursor: pointer; font-size: 11px; font-weight: 600; letter-spacing: .14em; text-transform: uppercase; color: var(--grey); list-style: none; }
+.log summary::-webkit-details-marker { display: none; }
+.log ul { list-style: none; margin: 10px 0 0; padding: 0 0 0 14px; border-left: 1px solid var(--line); }
+.log li { font-size: 12.5px; color: #555; padding: 3px 0; font-variant-numeric: tabular-nums; }

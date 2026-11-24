@@ -1,1 +1,1 @@
-{ "name": "ukoly", "private": true, "type": "module", "scripts": { "test": "node test/format.test.mjs && node test/group.test.mjs && node test/sync.test.mjs" } }
+{ "name": "ukoly", "private": true, "type": "module", "scripts": { "test": "node test/format.test.mjs && node test/group.test.mjs && node test/format2.test.mjs && node test/sync.test.mjs" } }

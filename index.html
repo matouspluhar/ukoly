@@ -35,7 +35,7 @@
 
     <footer>
       <span id="status"></span>
-      <span class="who"><span id="who"></span> · <button id="logout" class="link">odhlásit</button></span>
+      <span class="who"><span id="who"></span> · <button id="logout" class="link">odhlásit</button> · <span id="ver"></span></span>
     </footer>
   </div>
 
@@ -61,17 +61,20 @@
         <dt>Oheň 🔥</dt>
         <dd><button id="d-fire" class="switch fire" role="switch"><span></span></button></dd>
       </dl>
+      <dl id="d-plan" class="spec plan" hidden></dl>
+      <div id="d-links" class="links" hidden></div>
       <h2>Poznámka</h2>
       <textarea id="d-note" rows="4" placeholder="—"></textarea>
       <h2>Souvislosti <span class="by">Claude</span></h2>
       <div id="d-souv" class="souv"></div>
+      <div id="d-log" class="log"></div>
       <p id="d-meta" class="meta"></p>
     </div>
   </section>
 
   <div id="toast" hidden></div>
 
-  <script src="vendor/msal-browser.min.js"></script>
+  <script src="vendor/msal-browser.min.js" defer></script>
   <script type="module" src="js/app.js"></script>
 </body>
 </html>

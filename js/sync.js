@@ -152,7 +152,7 @@ export class Sync {
       let it;
       try { it = await this.b.getItem(id); } catch (e) { if (e.status === 404) return; throw e; }
       const text = await this.b.getText(it);
-      const next = applyPatch(text, { fields: op.fields, note: op.note });
+      const next = applyPatch(text, { fields: op.fields, note: op.note, log: op.log });
       if (next === text) return;
       try {
         const saved = await this.b.put(id, next, it.eTag);
@@ -180,7 +180,7 @@ export class Sync {
       let eTag = it.eTag, next = text;
       try {
         if (p.fm.stav !== 'hotovo') {
-          next = applyPatch(text, { fields: { stav: 'hotovo', hotovo: op.at } });
+          next = applyPatch(text, { fields: { stav: 'hotovo', hotovo: op.at }, log: 'hotovo (aplikace)' });
           eTag = (await this.b.put(id, next, eTag)).eTag;
         }
         let moved;
@@ -209,7 +209,7 @@ export class Sync {
       let it;
       try { it = await this.b.getItem(id); } catch (e) { if (e.status === 404) return; throw e; }
       const text = await this.b.getText(it);
-      const next = applyPatch(text, { fields: { stav: 'otevreno', hotovo: '' } });
+      const next = applyPatch(text, { fields: { stav: 'otevreno', hotovo: '' }, log: 'vráceno mezi otevřené (aplikace)' });
       try {
         let eTag = it.eTag;
         if (next !== text) eTag = (await this.b.put(id, next, eTag)).eTag;

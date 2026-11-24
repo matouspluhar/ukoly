@@ -2,8 +2,9 @@ import { openStore } from './store.js';
 import { createGraphBackend } from './graph.js';
 import { createDemoBackend } from './demo.js';
 import { Sync, makeTask } from './sync.js';
-import { applyPatch, newTaskText, fileName, compareTasks, isOpen, inMyDay, localDate, localDateTime, groupOf, groupTasks, dueLabel, parseZakazky } from './format.js';
+import { applyPatch, newTaskText, fileName, compareTasks, isOpen, inMyDay, localDate, localDateTime, groupOf, groupTasks, dueLabel, parseZakazky, parseTask, odhadMin } from './format.js';
 
+export const APP_VERSION = '2.5';
 const DEMO = new URLSearchParams(location.search).has('demo');
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -39,11 +40,18 @@ let doneOpen = localStorage.getItem('ukoly-done-open') === '1';
 const DNY = ['neděle', 'pondělí', 'úterý', 'středa', 'čtvrtek', 'pátek', 'sobota'];
 const MES = ['ledna', 'února', 'března', 'dubna', 'května', 'června', 'července', 'srpna', 'září', 'října', 'listopadu', 'prosince'];
 
+const odhadLabel = (min) => !min ? '' : min < 60 ? `${min} min` : min === 240 ? '½ dne' : min === 480 ? 'den' : `${String(+(min / 60).toFixed(1)).replace('.', ',')} h`;
+
 function rowHtml(t, title, cap, today) {
   const due = dueLabel(t.fm.termin, today);
-  return `<li class="row${t.fm.ohen ? ' fire' : ''}${t.note ? ' has-note' : ''}" data-id="${esc(t.id)}">
+  const wait = t.fm.ceka_na;
+  const krok = t.fm.dalsi_krok;
+  const od = odhadLabel(odhadMin(t.fm.odhad));
+  return `<li class="row${t.fm.ohen ? ' fire' : ''}${t.note ? ' has-note' : ''}${wait ? ' waiting' : ''}" data-id="${esc(t.id)}">
     <button class="check" aria-label="Hotovo"></button>
-    <span class="body">${cap ? `<span class="cap">${cap}</span>` : ''}<span class="title">${esc(title)}</span></span>
+    <span class="body">${cap ? `<span class="cap">${cap}</span>` : ''}<span class="title">${esc(title)}</span>${
+      wait ? `<span class="sub wait">čeká: ${esc(wait)}</span>` : krok ? `<span class="sub">→ ${esc(krok)}</span>` : ''}</span>
+    ${od ? `<span class="est">${od}</span>` : ''}
     ${t.fm.ohen ? '<span class="flame" aria-label="Oheň">🔥</span>' : ''}
     ${due ? `<span class="due${due.today ? ' is-today' : ''}${due.overdue ? ' is-over' : ''}">${due.text}</span>` : ''}
   </li>`;
@@ -85,7 +93,8 @@ function renderNow() {
   const done = doneToday(today).length;
   const total = den.length + done;
   $('#progress').hidden = view !== 'den' || total === 0;
-  $('#progress').innerHTML = `<span class="bar"><span style="width:${total ? Math.round(100 * done / total) : 0}%"></span></span><span class="lbl">${done} z ${total}</span>`;
+  const zbyva = den.filter((t) => !t.fm.ceka_na).reduce((a, t) => a + odhadMin(t.fm.odhad), 0);
+  $('#progress').innerHTML = `<span class="bar"><span style="width:${total ? Math.round(100 * done / total) : 0}%"></span></span><span class="lbl">${done} z ${total}${zbyva ? ` · zbývá ≈ ${odhadLabel(zbyva)}` : ''}</span>`;
   $('#progress').classList.toggle('full', total > 0 && den.length === 0);
   const fires = open.filter((t) => t.fm.ohen).length;
 
@@ -169,14 +178,15 @@ async function addTask(title) {
   await sync.enqueue({ type: 'create', tempId, filename, text });
 }
 
-async function updateTask(id, fields, note) {
+async function updateTask(id, fields, note, log) {
   const t = tasks.find((x) => x.id === id);
   if (!t) return;
-  const patch = { fields };
+  const patch = { fields, log };
   if (typeof note === 'string') patch.note = note;
   await setLocal(makeTask(t.id, t.name, applyPatch(t.text, patch), t.eTag));
-  await sync.enqueue({ type: 'update', taskId: id, fields, note: patch.note });
+  await sync.enqueue({ type: 'update', taskId: id, fields, note: patch.note, log });
 }
+const dm = (iso) => { const [, m, d] = iso.split('-').map(Number); return `${d}. ${m}.`; };
 
 let toastTimer = null;
 async function complete(id) {
@@ -232,6 +242,15 @@ function renderDetail(first = false) {
   $('#d-myday').classList.toggle('on', md); $('#d-myday').setAttribute('aria-checked', md);
   $('#d-fire').classList.toggle('on', !!t.fm.ohen); $('#d-fire').setAttribute('aria-checked', !!t.fm.ohen);
   $('#d-souv').textContent = t.souvislosti || '';
+  const p = parseTask(t.text);
+  const nv = (k) => (t.fm._navrh || []).includes(k) ? '<i>návrh Clauda</i>' : '';
+  const plan = [['hotovo_kdyz', 'Hotovo, když'], ['dalsi_krok', 'Další krok'], ['ceka_na', 'Čeká na'], ['odhad', 'Odhad'], ['castka', 'Částka'], ['smer', 'Kdo komu']]
+    .filter(([k]) => t.fm[k]).map(([k, l]) => `<dt>${l}</dt><dd>${esc(t.fm[k])}${nv(k)}</dd>`).join('');
+  $('#d-plan').innerHTML = plan;
+  $('#d-plan').hidden = !plan;
+  $('#d-links').innerHTML = p.odkazy.map((o) => `<a href="${esc(o.url)}" target="_blank" rel="noopener">${esc(o.label)} ↗</a>`).join('');
+  $('#d-links').hidden = !p.odkazy.length;
+  $('#d-log').innerHTML = p.prubeh.length ? `<details><summary>Průběh · ${p.prubeh.length}</summary><ul>${p.prubeh.slice().reverse().map((l) => `<li>${esc(l)}</li>`).join('')}</ul></details>` : '';
   $('#d-meta').textContent = [t.fm.zdroj && `zdroj: ${t.fm.zdroj}`, t.fm.vytvoreno && `vytvořeno ${t.fm.vytvoreno.replace('T', ' ')}`].filter(Boolean).join(' · ');
 }
 
@@ -258,7 +277,7 @@ function bind() {
   document.querySelectorAll('.tab').forEach((b) => b.onclick = () => {
     if (view === b.dataset.view) return;
     view = b.dataset.view; localStorage.setItem('ukoly-view', view);
-    const l = $('#list'); l.classList.remove('switch'); void l.offsetWidth; l.classList.add('switch');
+    const l = $('#list'); l.classList.remove('view-in'); void l.offsetWidth; l.classList.add('view-in');
     render();
   });
   $('#add').onsubmit = (e) => { e.preventDefault(); const i = $('#add-input'); addTask(i.value); i.value = ''; };
@@ -298,15 +317,18 @@ function bind() {
   $('#d-note').onblur = () => { clearTimeout(typing); saveDetailText(); };
   document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden' && openId) saveDetailText(); });
   $('#d-name').onkeydown = (e) => { if (e.key === 'Enter') { e.preventDefault(); e.target.blur(); } };
-  $('#d-due').onchange = () => updateTask(openId, { termin: $('#d-due').value || '' });
-  $('#d-due-clear').onclick = () => { $('#d-due').value = ''; updateTask(openId, { termin: '' }); };
+  $('#d-due').onchange = () => {
+    const v = $('#d-due').value || '';
+    updateTask(openId, { termin: v }, undefined, v ? `termín → ${dm(v)} (aplikace)` : 'termín zrušen (aplikace)');
+  };
+  $('#d-due-clear').onclick = () => { $('#d-due').value = ''; updateTask(openId, { termin: '' }, undefined, 'termín zrušen (aplikace)'); };
   $('#d-myday').onclick = () => {
     const t = tasks.find((x) => x.id === openId);
     updateTask(openId, { muj_den: t.fm.muj_den === localDate() ? '' : localDate() });
   };
   $('#d-fire').onclick = () => {
     const t = tasks.find((x) => x.id === openId);
-    updateTask(openId, { ohen: !t.fm.ohen });
+    updateTask(openId, { ohen: !t.fm.ohen }, undefined, t.fm.ohen ? 'oheň vypnut (aplikace)' : 'oheň zapnut (aplikace)');
   };
   $('#login').onclick = () => backend.login();
   $('#logout').onclick = () => { if (confirm('Odhlásit?')) backend.logout(); };
@@ -360,6 +382,7 @@ async function main() {
   db = await openStore(DEMO ? 'ukoly-demo' : 'ukoly');
   sync = new Sync(backend, db, { onTasks: (t) => { tasks = t; render(); }, onStatus: setStatus });
   bind();
+  $('#ver').textContent = 'v' + APP_VERSION;
   $('#add-input').placeholder = pick(PLACEHOLDERS);
 
   tasks = await db.all('tasks');
