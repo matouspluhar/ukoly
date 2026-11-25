@@ -19,6 +19,7 @@
   --line: #E8E5DE;
   --hover: #F1EFEA;
   --accent: #B8492F;    /* jen po termínu a oheň */
+  --claude: #D97757;    /* návrh Clauda – oranžová Claude */
   --on-ink: #FAF9F6;
   --f: "Plex", "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, Roboto, sans-serif;
   --s1: 13px; --s2: 15px; --s3: 26px;   /* tři velikosti písma */
@@ -39,6 +40,7 @@
     --ink: #ECE9E3; --ink2: #A6A299; --ink3: #6D6A64;
     --line: #2D2B29; --hover: #242321;
     --accent: #E2795E; --on-ink: #191817;
+    --claude: #E08B6D;
   }
 }
 
@@ -115,7 +117,7 @@ ul.rows { list-style: none; margin: 0; padding: 0; }
 .flame { font-size: 12px; }
 .sub { display: block; margin-top: 2px; font-size: var(--s1); line-height: 1.4; color: var(--ink2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .sub .sep { color: var(--ink3); padding: 0 5px; }
-.sub .navrh { color: var(--ink3); }
+.sub .navrh { color: var(--claude); font-weight: 600; }
 .aside { flex: none; display: flex; align-items: baseline; gap: 14px; padding-top: 1px; }
 .est, .due { font-size: var(--s1); line-height: 1.4; white-space: nowrap; }
 .est { color: var(--ink3); }
@@ -181,8 +183,8 @@ body.demo footer::before { content: "demo"; color: var(--accent); }
 .spec dt { font-size: var(--s1); color: var(--ink2); }
 .spec.plan { margin-top: 0; }
 .spec.plan dd { display: block; line-height: 1.45; }
-.navrh-ok { margin-left: 8px; padding: 1px 8px; border-radius: 6px; font-size: var(--s1); color: var(--ink2); background: var(--hover); }
-.navrh-ok:hover { color: var(--ink); background: var(--line); }
+.navrh-ok { margin-left: 8px; padding: 1px 8px; border-radius: 6px; font-size: var(--s1); font-weight: 500; color: var(--claude); background: var(--hover); }
+.navrh-ok:hover { background: var(--line); }
 .d-due { gap: 16px; }
 #d-due { font: inherit; color: var(--ink); background: transparent; border: 0; padding: 0; }
 button.switch { position: relative; width: 38px; height: 22px; border-radius: 11px; background: var(--line); transition: background .15s; }

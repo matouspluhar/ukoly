@@ -24,7 +24,7 @@ function seed() {
     { nazev: 'Poslat fakturu za studii', zakazka: 2609, termin: day(-2), odhad: '15 min' },
     { nazev: 'Zavolat investorovi kvůli statice', zakazka: 2609, termin: day(3), odhad: '30 min' },
     { nazev: 'Zkontrolovat zálohy', zakazka: 'PENÍZE', odhad: '30 min' },
-    { nazev: 'Připravit cvičení na rozpočet', zakazka: 'TUL', odhad: '2 h', muj_den: today },
+    { nazev: 'Připravit cvičení na rozpočet', zakazka: 'TUL', odhad: '2 h', muj_den: today, navrh: today },
     { nazev: 'Koupit mléko', note: 'mléko, rohlíky, máslo', odhad: '15 min', muj_den: today },
     { nazev: 'Přečíst kapitolu o Zettelkastenu', odhad: '1 h', zdroj: 'app' },
   ];

@@ -2,7 +2,7 @@
 // Nová verze = změnit VERSION (= 'ukoly-' + APP_VERSION z js/app.js). Prohlížeč pak stáhne
 // celé nové vydání na pozadí a aplikace nabídne „Načíst“. Data drží IndexedDB, ne tato mezipaměť.
 // SHELL = všechny soubory aplikace; úplnost hlídá test/release.test.mjs.
-const VERSION = 'ukoly-3.2';
+const VERSION = 'ukoly-3.3';
 const SHELL = [
   './', 'index.html', 'styles.css', 'config.js', 'manifest.webmanifest',
   'js/app.js', 'js/format.js', 'js/graph.js', 'js/demo.js', 'js/store.js', 'js/sync.js',

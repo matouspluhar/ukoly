@@ -9,7 +9,7 @@ import {
   groupOf, groupTasks, dueLabel, parseZakazky, parseTask, odhadMin, odhadLabel,
 } from './format.js';
 
-export const APP_VERSION = '3.2';   // při změně uprav i VERSION v sw.js (hlídá test/release.test.mjs)
+export const APP_VERSION = '3.3';   // při změně uprav i VERSION v sw.js (hlídá test/release.test.mjs)
 
 const DEMO = new URLSearchParams(location.search).has('demo');
 const WIDE = matchMedia('(min-width: 1240px)');   // detail jako pravý panel – shodně se styles.css
@@ -62,9 +62,9 @@ function rowHtml(t, g, today, showGroup) {
   const wait = t.fm.ceka_na;
   const est = odhadLabel(odhadMin(t.fm.odhad));
   const sub = [
+    t.fm.navrh === today ? '<span class="navrh">návrh Clauda</span>' : '',
     showGroup && g.key !== 'ostatni' ? esc(g.name) : '',
     wait ? `čeká na ${esc(wait)}` : esc(t.fm.dalsi_krok || ''),
-    t.fm.navrh === today ? '<span class="navrh">návrh Clauda</span>' : '',
   ].filter(Boolean).join('<span class="sep">·</span>');
   const cls = ['row', t.fm.ohen && 'fire', t.note && 'has-note', wait && 'waiting', t.id === openId && 'sel'].filter(Boolean).join(' ');
   return `<li class="${cls}" data-id="${esc(t.id)}">
