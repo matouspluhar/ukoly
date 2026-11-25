@@ -152,7 +152,7 @@ export class Sync {
       let it;
       try { it = await this.b.getItem(id); } catch (e) { if (e.status === 404) return; throw e; }
       const text = await this.b.getText(it);
-      const next = applyPatch(text, { fields: op.fields, note: op.note, log: op.log });
+      const next = applyPatch(text, { fields: op.fields, note: op.note, log: op.log, confirm: op.confirm });
       if (next === text) return;
       try {
         const saved = await this.b.put(id, next, it.eTag);

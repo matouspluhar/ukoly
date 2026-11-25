@@ -138,8 +138,9 @@ export function parseTask(text) {
   };
 }
 
-// patch = { fields: {klíč: hodnota}, note?: string }
-// Přepíše jen povolená pole; zbytek souboru zůstane beze změny.
+// patch = { fields: {klíč: hodnota}, note?: string, log?: string, confirm?: [klíč] }
+// Přepíše jen povolená pole; confirm u jmenovaných polí jen smaže komentář „# NÁVRH“
+// (Matouš potvrdil návrh Clauda, hodnota zůstane). Zbytek souboru zůstane beze změny.
 export function applyPatch(text, patch) {
   const t = normalize(text);
   let m = t.match(FM_RE);
@@ -164,6 +165,13 @@ export function applyPatch(text, patch) {
       }
       lines.splice(insertAt, 0, fv === '' ? `${key}:` : `${key}: ${fv}`);
     }
+  }
+
+  for (const key of patch.confirm || []) {
+    const idx = lines.findIndex((l) => l.startsWith(key + ':'));
+    if (idx < 0) continue;
+    const { value, comment } = splitValueComment(lines[idx].slice(key.length + 1));
+    if (/N[ÁA]VRH/i.test(comment)) lines[idx] = value === '' ? `${key}:` : `${key}: ${value}`;
   }
 
   if (typeof patch.note === 'string') {

@@ -78,3 +78,14 @@ assert.equal(n.fm.schema, '2'); assert.equal(n.prubeh.length, 1);
 // poznámka s nadpisem nevyrobí sekci
 assert.equal(parseTask(applyPatch(v2, { note: '## Odkazy\n- [x](https://x.cz)' })).odkazy.length, 2);
 console.log('format v2: testy prošly');
+
+// potvrzení návrhu: zmizí jen komentář, hodnota i ostatní návrhy zůstanou
+{
+  const c = applyPatch(v2, { confirm: ['odhad', 'termin'] });
+  const pc = parseTask(c);
+  assert.equal(pc.fm.odhad, 'půlden');
+  assert.deepEqual(pc.fm._navrh, ['hotovo_kdyz', 'dalsi_krok']);
+  assert.ok(/^odhad: půlden$/m.test(c));
+  assert.equal(applyPatch(c, { confirm: ['odhad'] }), c);
+  console.log('potvrzení návrhu OK');
+}

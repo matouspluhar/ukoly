@@ -9,7 +9,7 @@ import {
   groupOf, groupTasks, dueLabel, parseZakazky, parseTask, odhadMin, odhadLabel,
 } from './format.js';
 
-export const APP_VERSION = '3.1';   // při změně uprav i VERSION v sw.js (hlídá test/release.test.mjs)
+export const APP_VERSION = '3.2';   // při změně uprav i VERSION v sw.js (hlídá test/release.test.mjs)
 
 const DEMO = new URLSearchParams(location.search).has('demo');
 const WIDE = matchMedia('(min-width: 1240px)');   // detail jako pravý panel – shodně se styles.css
@@ -225,11 +225,17 @@ async function addTask(title) {
   await sync.enqueue({ type: 'create', tempId, filename, text });
 }
 
-async function updateTask(id, fields, { note, log } = {}) {
+async function updateTask(id, fields, { note, log, confirm } = {}) {
   const t = find(id);
   if (!t) return;
-  await setLocal(patched(t, { fields, note, log }));
-  await sync.enqueue({ type: 'update', taskId: id, fields, note, log });
+  await setLocal(patched(t, { fields, note, log, confirm }));
+  await sync.enqueue({ type: 'update', taskId: id, fields, note, log, confirm });
+}
+
+// Potvrzení návrhu Clauda: hodnota zůstane, zmizí jen „# NÁVRH“.
+function confirmProposals(keys) {
+  const labels = keys.map((k) => PLAN.find(([pk]) => pk === k)?.[1].toLowerCase() || k).join(', ');
+  updateTask(openId, {}, { confirm: keys, log: `návrh potvrzen: ${labels} (aplikace)` });
 }
 
 async function complete(id) {
@@ -306,8 +312,10 @@ function renderDetail(first = false) {
   $('#d-group').innerHTML = g.key === 'ostatni' ? '' : nameHtml(g);
   setSwitch('#d-myday', t.fm.muj_den === today);
   setSwitch('#d-fire', !!t.fm.ohen);
-  const navrh = (k) => (t.fm._navrh || []).includes(k) ? '<i>návrh Clauda</i>' : '';
-  const plan = PLAN.filter(([k]) => t.fm[k]).map(([k, l]) => `<dt>${l}</dt><dd>${esc(t.fm[k])}${navrh(k)}</dd>`).join('');
+  const proposed = PLAN.map(([k]) => k).filter((k) => t.fm[k] && (t.fm._navrh || []).includes(k));
+  const navrh = (k) => proposed.includes(k) ? `<button class="navrh-ok" data-confirm="${k}" title="Potvrdit návrh">návrh Clauda · potvrdit</button>` : '';
+  const plan = PLAN.filter(([k]) => t.fm[k]).map(([k, l]) => `<dt>${l}</dt><dd>${esc(t.fm[k])}${navrh(k)}</dd>`).join('')
+    + (proposed.length > 1 ? `<dt></dt><dd><button class="link" data-confirm="${proposed.join(',')}">Potvrdit všechny návrhy</button></dd>` : '');
   $('#d-plan').innerHTML = plan;
   $('#d-plan').hidden = !plan;
   $('#d-links').innerHTML = p.odkazy.map((o) => `<a href="${esc(o.url)}" target="_blank" rel="noopener">${esc(o.label)} ↗</a>`).join('');
@@ -380,6 +388,7 @@ function bind() {
   $('#d-name').onblur = saveNow;
   $('#d-note').oninput = saveSoon;
   $('#d-note').onblur = saveNow;
+  $('#d-plan').onclick = (e) => { const b = e.target.closest('[data-confirm]'); if (b) confirmProposals(b.dataset.confirm.split(',')); };
   $('#d-due').onchange = () => setDue($('#d-due').value || '');
   $('#d-due-clear').onclick = () => { $('#d-due').value = ''; setDue(''); };
   $('#d-myday').onclick = () => updateTask(openId, { muj_den: find(openId).fm.muj_den === localDate() ? '' : localDate() });
