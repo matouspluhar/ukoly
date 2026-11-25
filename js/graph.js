@@ -1,4 +1,6 @@
 // Přístup k OneDrivu přes Microsoft Graph, přihlášení MSAL.js (SPA, veřejný klient).
+// Rozhraní backendu (stejné má demo.js): init, canAutoLogin, userName, login, reauth, logout,
+// folderId, doneFolderId, zakazky, list, listDone, getItem, getText, put, create, move.
 import { CONFIG } from '../config.js';
 
 const GRAPH = 'https://graph.microsoft.com/v1.0';
@@ -102,7 +104,6 @@ export function createGraphBackend() {
       } catch { return false; }
     },
 
-    signedIn: () => !!account,
     userName: () => account?.username || '',
     login: () => {
       const hint = (() => { try { return localStorage.getItem(HINT); } catch { return null; } })();

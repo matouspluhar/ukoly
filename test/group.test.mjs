@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { parseZakazky, groupOf, groupTasks, dueLabel } from '../js/format.js';
+import { parseZakazky, groupOf, groupTasks, dueLabel, odhadLabel } from '../js/format.js';
 const names = parseZakazky('# Zakázky\n- 2620 Paseka\n- 2612 ZŠ Lázně Bohdaneč\n| 2601 | Divadlo Plzeň |\n');
 assert.deepEqual(names, { '2620': 'Paseka', '2612': 'ZŠ Lázně Bohdaneč', '2601': 'Divadlo Plzeň' });
 const mk = (fm) => ({ fm: { stav: 'otevreno', ohen: false, termin: '', ...fm } });
@@ -19,3 +19,13 @@ assert.equal(dueLabel('2026-11-28', '2026-11-24').text, 'so 28. 11.');
 assert.ok(dueLabel('2026-11-20', '2026-11-24').overdue);
 console.log('group: testy prošly');
 assert.deepEqual(parseZakazky('- HSN Hlavně se neposrat\n# Nadpis\n'), { HSN: 'Hlavně se neposrat' }); console.log('kódy oblastí OK');
+
+// zobrazované názvy skupin
+assert.equal(groupOf(mk({ nazev: 'a', zakazka: 'PENÍZE' }), names).name, 'Peníze');
+assert.equal(groupOf(mk({ nazev: 'a', zakazka: 'HSN' }), names).name, 'HSN');
+assert.equal(groupOf(mk({ nazev: 'a', zakazka: 'HSN' }), { HSN: 'Hlavně se neposrat' }).name, 'Hlavně se neposrat');
+assert.equal(groupOf(mk({ nazev: 'a', zakazka: '2601' }), {}).name, '2601');
+assert.equal(groupOf(mk({ nazev: 'a', zakazka: '2601' }), names).name, 'Divadlo Plzeň');
+assert.equal(groupOf(mk({ nazev: 'a' }), names).name, 'Ostatní');
+assert.deepEqual([15, 90, 240, 480, 0].map(odhadLabel), ['15 min', '1,5 h', '½ dne', 'den', '']);
+console.log('názvy skupin a odhad OK');

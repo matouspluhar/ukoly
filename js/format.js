@@ -1,12 +1,11 @@
-// Formát úkolu podle MYSLENI/00_SYSTEM.md v0.4.
-// Jeden úkol = jeden .md soubor s YAML hlavičkou. Aplikace mění jen
-// stav, hotovo, termin, muj_den, ohen, nazev a poznámku. Sekci
-// „## Souvislosti“ a pole zakazka nikdy nepřepisuje.
+// Formát úkolu (schema 2) podle MYSLENI/00_SYSTEM.md a čisté funkce nad ním.
+// Jeden úkol = jeden .md soubor s YAML hlavičkou. Aplikace mění jen pole APP_FIELDS,
+// poznámku a sekci Průběh; ostatní pole (zakazka, dalsi_krok, ceka_na, odhad…) a sekci
+// „## Souvislosti“ píše Claude a aplikace je jen čte. Bez DOM – testuje se v Node.
 
 export const APP_FIELDS = ['nazev', 'stav', 'termin', 'muj_den', 'ohen', 'hotovo'];
 const FIELD_ORDER = ['schema', 'nazev', 'stav', 'termin', 'muj_den', 'navrh', 'ohen', 'zakazka', 'hotovo_kdyz', 'dalsi_krok',
   'ceka_na', 'odhad', 'castka', 'smer', 'vytvoreno', 'hotovo', 'zdroj'];
-const SOUV_RE = /^##[ \t]+Souvislosti[ \t]*$/m;
 const HEAD_RE = /^##[ \t]+\S.*$/m;      // první nadpis sekce = konec poznámky
 const FM_RE = /^(﻿?)---\n([\s\S]*?)\n---[ \t]*(?:\n|$)([\s\S]*)$/;
 
@@ -101,6 +100,15 @@ export function odhadMin(v) {
   const m = s.match(/^([\d.]+)\s*(min|h|hod)/);
   if (!m) return 0;
   return Math.round(parseFloat(m[1]) * (m[2] === 'min' ? 1 : 60));
+}
+
+// minuty → „15 min“, „1,5 h“, „½ dne“, „den“
+export function odhadLabel(min) {
+  if (!min) return '';
+  if (min < 60) return `${min} min`;
+  if (min === 240) return '½ dne';
+  if (min === 480) return 'den';
+  return `${String(+(min / 60).toFixed(1)).replace('.', ',')} h`;
 }
 
 export function parseTask(text) {
@@ -248,22 +256,24 @@ export function splitPrefix(nazev) {
 
 const fold = (s) => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
 
-// Skupina úkolu: zakázka (číslo + název), jinak předpona názvu, jinak Ostatní.
+// Skupina úkolu: zakázka (číslo + název), kód oblasti, předpona názvu, jinak Ostatní.
+// key = identita skupiny, num = číslo zakázky, label = název z dat, name = co se zobrazí.
+const areaName = (code, names) => names[code] || (code.length > 3 ? code[0] + code.slice(1).toLowerCase() : code);
 export function groupOf(t, names = {}) {
   const z = String(t.fm.zakazka || '').trim();
   const { prefix, rest } = splitPrefix(t.fm.nazev);
   if (z && !/^\d/.test(z)) {
-    // Kód oblasti (HSN, OSOBNÍ): stačí samotný kód jako nadpis.
+    // Kód oblasti (HSN, PENÍZE): zkratky zůstanou, slova se píšou běžně („Peníze“).
     const strip = prefix && fold(prefix) === fold(z);
-    return { key: 'z:' + z, num: '', label: z, title: strip ? rest : t.fm.nazev };
+    return { key: 'z:' + z, num: '', label: z, name: areaName(z, names), title: strip ? rest : t.fm.nazev };
   }
   if (z) {
     const label = names[z] || prefix || '';
     const strip = prefix && (!names[z] || fold(names[z]).startsWith(fold(prefix)) || fold(prefix).startsWith(fold(names[z])));
-    return { key: 'z:' + z, num: z, label, title: strip ? rest : t.fm.nazev };
+    return { key: 'z:' + z, num: z, label, name: label || z, title: strip ? rest : t.fm.nazev };
   }
-  if (prefix) return { key: 'p:' + fold(prefix), num: '', label: prefix, title: rest };
-  return { key: 'ostatni', num: '', label: 'Ostatní', title: t.fm.nazev || '' };
+  if (prefix) return { key: 'p:' + fold(prefix), num: '', label: prefix, name: prefix, title: rest };
+  return { key: 'ostatni', num: '', label: 'Ostatní', name: 'Ostatní', title: t.fm.nazev || '' };
 }
 
 export function groupTasks(list, names = {}) {
