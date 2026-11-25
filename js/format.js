@@ -5,7 +5,7 @@
 
 export const APP_FIELDS = ['nazev', 'stav', 'termin', 'muj_den', 'ohen', 'hotovo'];
 const FIELD_ORDER = ['schema', 'nazev', 'stav', 'termin', 'muj_den', 'navrh', 'ohen', 'zakazka', 'hotovo_kdyz', 'dalsi_krok',
-  'ceka_na', 'odhad', 'castka', 'smer', 'vytvoreno', 'hotovo', 'zdroj'];
+  'ceka_na', 'ceka_od', 'odhad', 'castka', 'smer', 'vytvoreno', 'hotovo', 'zdroj'];
 const HEAD_RE = /^##[ \t]+\S.*$/m;      // první nadpis sekce = konec poznámky
 const FM_RE = /^(﻿?)---\n([\s\S]*?)\n---[ \t]*(?:\n|$)([\s\S]*)$/;
 
@@ -211,7 +211,7 @@ export function fileName(name, d = new Date()) {
   return `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())} ${slugify(name)}.md`;
 }
 
-export function newTaskText({ nazev, muj_den = '', termin = '', ohen = false, note = '' }, d = new Date()) {
+export function newTaskText({ nazev, muj_den = '', termin = '', ohen = false, note = '', zakazka = '', odhad = '' }, d = new Date()) {
   const lines = [
     '---',
     'schema: 2',
@@ -220,7 +220,8 @@ export function newTaskText({ nazev, muj_den = '', termin = '', ohen = false, no
     termin ? `termin: ${termin}` : 'termin:',
     muj_den ? `muj_den: ${muj_den}` : 'muj_den:',
     `ohen: ${ohen ? 'true' : 'false'}`,
-    'zakazka:',
+    zakazka ? `zakazka: ${zakazka}` : 'zakazka:',
+    ...(odhad ? [`odhad: ${odhad}`] : []),
     `vytvoreno: ${localDateTime(d)}`,
     'hotovo:',
     'zdroj: app',
@@ -308,4 +309,74 @@ export function dueLabel(termin, today = localDate()) {
   const diff = Math.round((date - new Date(ty, tm - 1, td)) / 86400000);
   const text = diff === 0 ? 'dnes' : diff === 1 ? 'zítra' : diff > 1 && diff < 7 ? `${DNY[date.getDay()]} ${d}. ${m}.` : `${d}. ${m}.`;
   return { text, overdue: diff < 0, today: diff === 0 };
+}
+
+// ---------- rychlé přidání ----------
+// „2612 nakreslit sokl pá 2h !“ → zakázka 2612, termín nejbližší pátek, odhad 2 h, oheň.
+// Zakázka: první slovo, je-li to číslo nebo kód ze ZAKAZKY.md (velikost písmen nevadí).
+// Termín: dnes, zítra, po–ne (nejbližší, dnešek počítá), 27.11. / 27. 11. (letos, jinak příští rok).
+// Odhad: 15min, 30 min, 2h, 1,5h, půlden. Oheň: samostatný vykřičník.
+const QA_DNY = ['ne', 'po', 'út', 'st', 'čt', 'pá', 'so'];
+const fmtOdhad = (min) => (min === 240 ? 'půlden' : min < 60 ? `${min} min` : `${String(+(min / 60).toFixed(1)).replace('.', ',')} h`);
+export function parseQuickAdd(text, today = localDate(), names = {}) {
+  let words = String(text).trim().split(/\s+/).filter(Boolean);
+  const out = { nazev: '', zakazka: '', termin: '', odhad: '', ohen: false };
+  const [ty, tm, td] = today.split('-').map(Number);
+  const base = new Date(ty, tm - 1, td);
+  const iso = (dt) => localDate(dt);
+  const codes = Object.keys(names);
+  if (words.length > 1) {
+    const w = words[0];
+    const code = codes.find((c) => c.toLowerCase() === w.toLowerCase());
+    if (/^\d{4}$/.test(w) || code) { out.zakazka = code || w; words = words.slice(1); }
+  }
+  const rest = [];
+  // Slova dne („po“, „st“, „dnes“) jen na konci řádku – „zavolat po obědě“ termín nemá.
+  const TAIL = /^(!{1,2}|\d+(?:[.,]\d+)?\s*(?:min|h)?|min|h|půlden)$/i;
+  const atTail = (i) => words.slice(i + 1).every((x) => TAIL.test(x));
+  for (let i = 0; i < words.length; i++) {
+    const w = words[i], lw = w.toLowerCase();
+    const next = words[i + 1] || '';
+    if (w === '!' || w === '!!') { out.ohen = true; continue; }
+    if (!out.termin && atTail(i) && (lw === 'dnes' || lw === 'zítra' || lw === 'zitra')) {
+      const dt = new Date(base); if (lw !== 'dnes') dt.setDate(dt.getDate() + 1); out.termin = iso(dt); continue;
+    }
+    const di = QA_DNY.indexOf(lw.replace('ut', 'út').replace('ct', 'čt').replace('pa', 'pá'));
+    if (!out.termin && di >= 0 && rest.length && atTail(i)) {
+      const dt = new Date(base); dt.setDate(dt.getDate() + ((di - dt.getDay() + 7) % 7)); out.termin = iso(dt); continue;
+    }
+    let m = w.match(/^(\d{1,2})\.(\d{1,2})\.?$/);
+    if (!m && /^\d{1,2}\.$/.test(w) && /^\d{1,2}\.$/.test(next)) { m = [w + next, w.slice(0, -1), next.slice(0, -1)]; i++; }
+    if (!out.termin && m) {
+      const dt = new Date(ty, +m[2] - 1, +m[1]);
+      if (dt < base) dt.setFullYear(ty + 1);
+      if (dt.getMonth() === +m[2] - 1) { out.termin = iso(dt); continue; }
+    }
+    const e = lw.match(/^(\d+(?:[.,]\d+)?)\s*(min|h)$/) || ((/^\d+(?:[.,]\d+)?$/.test(lw) && /^(min|h)$/.test(next.toLowerCase())) ? [null, lw, next.toLowerCase()] : null);
+    if (!out.odhad && e) {
+      const v = parseFloat(String(e[1]).replace(',', '.'));
+      const min = Math.round(e[2] === 'h' ? v * 60 : v);
+      if (min > 0 && min <= 960) { out.odhad = fmtOdhad(min); if (!lw.match(/(min|h)$/)) i++; continue; }
+    }
+    if (!out.odhad && lw === 'půlden') { out.odhad = 'půlden'; continue; }
+    rest.push(w);
+  }
+  out.nazev = rest.join(' ').replace(/\s+!$/, '').trim();
+  if (!out.nazev) return { nazev: String(text).trim(), zakazka: '', termin: '', odhad: '', ohen: false };
+  return out;
+}
+
+// Od kdy úkol čeká: pole ceka_od, jinak poslední řádek Průběhu o čekání, jinak datum vytvoření.
+export function waitingSince(t) {
+  if (!t.fm.ceka_na) return '';
+  if (/^\d{4}-\d{2}-\d{2}/.test(t.fm.ceka_od || '')) return t.fm.ceka_od.slice(0, 10);
+  const lines = (t.prubeh || parseTask(t.text || '').prubeh || []).filter((l) => /ček|ceka_na/i.test(l));
+  const m = lines.length && lines[lines.length - 1].match(/^(\d{4}-\d{2}-\d{2})/);
+  if (m) return m[1];
+  return String(t.fm.vytvoreno || '').slice(0, 10);
+}
+export function daysBetween(fromIso, toIso) {
+  if (!fromIso) return 0;
+  const [a, b] = [fromIso, toIso].map((s) => { const [y, m, d] = s.split('-').map(Number); return new Date(y, m - 1, d); });
+  return Math.round((b - a) / 86400000);
 }

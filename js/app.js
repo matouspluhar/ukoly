@@ -7,14 +7,16 @@ import { Sync, makeTask } from './sync.js';
 import {
   applyPatch, newTaskText, fileName, compareTasks, isOpen, inMyDay, localDate, localDateTime,
   groupOf, groupTasks, dueLabel, parseZakazky, parseTask, odhadMin, odhadLabel,
+  parseQuickAdd, waitingSince, daysBetween,
 } from './format.js';
 
-export const APP_VERSION = '3.4';   // při změně uprav i VERSION v sw.js (hlídá test/release.test.mjs)
+export const APP_VERSION = '3.7';   // při změně uprav i VERSION v sw.js (hlídá test/release.test.mjs)
 
 const DEMO = new URLSearchParams(location.search).has('demo');
 const WIDE = matchMedia('(min-width: 1240px)');   // detail jako pravý panel – shodně se styles.css
 const DONE_DAYS = 7;                               // hotové ve „Všech“ (OneDrive se čte za 14 dní)
 const UNDO_MS = 5000;
+const LONG_WAIT = 7;                               // po kolika dnech čekání zvýraznit (šedomodrá)
 
 const $ = (s) => document.querySelector(s);
 // Pohyb: jedna křivka a krátké časy (160–280 ms); při „omezit pohyb“ v systému se nic neanimuje.
@@ -67,8 +69,11 @@ function rowHtml(t, g, today, showGroup) {
   const due = dueLabel(t.fm.termin, today);
   const wait = t.fm.ceka_na;
   const est = odhadLabel(odhadMin(t.fm.odhad));
+  const days = wait ? daysBetween(waitingSince(t), today) : 0;
+  const waited = days > 0 ? `<span class="${days > LONG_WAIT ? 'waited long' : 'waited'}">čekám ${days} ${days === 1 ? 'den' : days < 5 ? 'dny' : 'dní'}</span>` : '';
   const sub = [
     t.fm.navrh === today ? '<span class="navrh">návrh Clauda</span>' : '',
+    waited,
     showGroup && g.key !== 'ostatni' ? esc(g.name) : '',
     wait ? `čeká na ${esc(wait)}` : esc(t.fm.dalsi_krok || ''),
   ].filter(Boolean).join('<span class="sep">·</span>');
@@ -76,7 +81,7 @@ function rowHtml(t, g, today, showGroup) {
   return `<li class="${cls}" data-id="${esc(t.id)}">
     <button class="check" aria-label="Hotovo"></button>
     <span class="body"><span class="title">${esc(g.title)}${t.fm.ohen ? ' <span class="flame" aria-label="Oheň">🔥</span>' : ''}</span>${sub ? `<span class="sub">${sub}</span>` : ''}</span>
-    <span class="aside">${est ? `<span class="est">${est}</span>` : ''}<span class="due${due?.today ? ' is-today' : ''}${due?.overdue ? ' is-over' : ''}">${due ? due.text : ''}</span></span>
+    <span class="aside"><span class="est">${est}</span><span class="due${due?.today ? ' is-today' : ''}${due?.overdue ? ' is-over' : ''}">${due ? due.text : ''}</span></span>
   </li>`;
 }
 
@@ -86,7 +91,7 @@ function doneRowHtml(t, today, showWhen) {
   return `<li class="row is-done" data-id="${esc(t.id)}">
     <button class="check" aria-label="Vrátit mezi otevřené"></button>
     <span class="body"><span class="title">${esc(g.title)}</span>${showWhen && g.key !== 'ostatni' ? `<span class="sub">${esc(g.name)}</span>` : ''}</span>
-    <span class="aside"><span class="due">${when ? when.text : ''}</span></span>
+    <span class="aside"><span class="est"></span><span class="due">${when ? when.text : ''}</span></span>
   </li>`;
 }
 
@@ -95,16 +100,29 @@ const rowsHtml = (list, today, showGroup) =>
 
 // „6 úkolů · celkem 9 h“ – počet úkolů a součet polí odhad (úkoly bez odhadu se nepočítají).
 const ukolu = (n) => `${n} ${n === 1 ? 'úkol' : n < 5 ? 'úkoly' : 'úkolů'}`;
-function groupSummary(list) {
-  const min = list.reduce((a, t) => a + odhadMin(t.fm.odhad), 0);
-  const total = min < 60 ? `${min} min` : `${String(+(min / 60).toFixed(1)).replace('.', ',')} h`;
-  return ukolu(list.length) + (min ? ` · celkem ${total}` : '');
+// Poctivý součet skupiny: ve sloupci odhadů jen práce, kterou jde udělat teď (bez čekajících);
+// čekající hodiny a úkoly bez odhadu zvlášť, aby číslo nenadsazovalo ani nemlčelo.
+const hours = (min) => (min < 60 ? `${min} min` : `${String(+(min / 60).toFixed(1)).replace('.', ',')} h`);
+function groupSums(list) {
+  let now = 0, wait = 0, none = 0;
+  for (const t of list) {
+    const m = odhadMin(t.fm.odhad);
+    if (!m) none++;
+    else if (t.fm.ceka_na) wait += m;
+    else now += m;
+  }
+  return {
+    total: now ? hours(now) : '',
+    note: [wait && `+${hours(wait)} čeká`, none && `${none} bez odhadu`].filter(Boolean).join(' · '),
+  };
 }
+
+const sums = (g) => (g._sums ||= groupSums(g.items.map(({ t }) => t)));
 
 function groupsHtml(groups, today) {
   return groups.map((g) => `
     <section class="group${g.key === 'ostatni' ? ' other' : ''}">
-      <div class="g-head"><span class="g-label">${esc(g.name)}${g.num && g.label ? ` <span class="g-num">${esc(g.num)}</span>` : ''}</span><span class="g-count">${groupSummary(g.items.map(({ t }) => t))}</span></div>
+      <div class="g-head"><span class="g-label">${esc(g.name)}${g.num && g.label ? ` <span class="g-num">${esc(g.num)}</span>` : ''}<span class="g-n"> · ${ukolu(g.items.length)}${sums(g).note ? ` · ${sums(g).note}` : ''}</span></span><span class="h-est" title="Součet odhadů úkolů, které nečekají">${sums(g).total}</span><span class="h-due">termín</span></div>
       ${rowsHtml(g.items.map(({ t }) => t), today, false)}
     </section>`).join('');
 }
@@ -241,16 +259,33 @@ async function setLocal(t) {
 }
 const patched = (t, patch) => makeTask(t.id, t.name, applyPatch(t.text, patch), t.eTag);
 
+// Rychlé přidání: „2612 nakreslit sokl pá 2h !“ – zakázka, termín, odhad a oheň rovnou z řádku.
 async function addTask(title) {
-  const nazev = title.trim();
-  if (!nazev) return;
+  if (!title.trim()) return;
   const now = new Date();
+  const q = parseQuickAdd(title, localDate(now), names);
+  const zakazka = q.zakazka || (view.startsWith('g:z:') ? view.slice(4) : '');
   const tempId = `tmp-${now.getTime()}-${Math.random().toString(36).slice(2, 6)}`;
-  const text = newTaskText({ nazev, muj_den: view === 'den' ? localDate(now) : '' }, now);
-  const filename = fileName(nazev, now);
+  const text = newTaskText({ ...q, zakazka, muj_den: view === 'den' ? localDate(now) : '' }, now);
+  const filename = fileName(q.nazev, now);
   fresh.add(tempId);
   await setLocal(makeTask(tempId, filename, text, null));
   await sync.enqueue({ type: 'create', tempId, filename, text });
+}
+
+// Náhled rozpoznaných údajů pod polem pro přidání (co se z řádku stane).
+function showQuickPreview(value) {
+  const q = value.trim() ? parseQuickAdd(value, localDate(), names) : {};
+  const z = q.zakazka || (view.startsWith('g:z:') ? view.slice(4) : '');
+  const parts = [
+    z && esc(names[z] ? `${names[z]} ${/^\d/.test(z) ? z : ''}`.trim() : z),
+    q.termin && `termín ${dueLabel(q.termin, localDate()).text}`,
+    q.odhad && esc(q.odhad),
+    q.ohen && '<span class="fire-t">hoří</span>',
+  ].filter(Boolean);
+  const el = $('#add-preview');
+  el.innerHTML = parts.join('<span class="sep">·</span>');
+  el.hidden = !parts.length;
 }
 
 async function updateTask(id, fields, { note, log, confirm } = {}) {
@@ -387,7 +422,8 @@ function setDue(v) {
 function bind() {
   $$('.tab, .sv').forEach((b) => { b.onclick = () => setView(b.dataset.view); });
   $('#side-groups').onclick = (e) => { const b = e.target.closest('.sg'); if (b) setView(b.dataset.view); };
-  $('#add').onsubmit = (e) => { e.preventDefault(); const i = $('#add-input'); addTask(i.value); i.value = ''; };
+  $('#add').onsubmit = (e) => { e.preventDefault(); const i = $('#add-input'); addTask(i.value); i.value = ''; showQuickPreview(''); };
+  $('#add-input').oninput = (e) => showQuickPreview(e.target.value);
 
   $('#list').onclick = (e) => {
     const row = e.target.closest('.row');

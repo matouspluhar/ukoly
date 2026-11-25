@@ -20,11 +20,14 @@
   --hover: #F1EFEA;
   --fire: #C8322B;      /* červená = hoří: oheň a termín po splatnosti */
   --claude: #D97757;    /* návrh Clauda – oranžová Claude */
+  --wait: #4E6E8E;      /* šedomodrá = čekám příliš dlouho, připomenout se */
   --on-ink: #FAF9F6;
   --f: "Plex", "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, Roboto, sans-serif;
   --s1: 13px; --s2: 15px; --s3: 26px;   /* tři velikosti písma */
   --ease: cubic-bezier(.2, .8, .2, 1);   /* jedna křivka pro všechny přechody (stejná v app.js) */
   --pad: 20px;
+  --c-est: 52px;   /* sloupec odhadu – řádky i záhlaví zakázky */
+  --c-due: 66px;   /* sloupec termínu */
   --side: 248px;
   --pane: 440px;
   font-family: var(--f);
@@ -42,6 +45,7 @@
     --line: #2D2B29; --hover: #242321;
     --fire: #F0675B; --on-ink: #191817;
     --claude: #E08B6D;
+    --wait: #93AECB;
   }
 }
 
@@ -99,12 +103,16 @@ button { font: inherit; color: inherit; background: none; border: 0; padding: 0;
 ul.rows { list-style: none; margin: 0; padding: 0; }
 /* záhlaví zakázky: drží se nahoře, dokud se neodroluje celá skupina – vždy je vidět, kde jsem */
 .group { padding-top: 24px; }
-.g-head { position: sticky; top: 0; z-index: 2; display: flex; align-items: baseline; gap: 8px; margin: 0 -8px 4px; padding: 10px 8px 8px 42px;
+.g-head { position: sticky; top: 0; z-index: 2; display: flex; align-items: baseline; gap: 14px; margin: 0 -8px 4px; padding: 10px 16px 8px 42px;
   background: var(--bg); border-bottom: 1px solid var(--line); font-size: 17px; }
 .g-label { flex: 1; min-width: 0; font-weight: 600; letter-spacing: -.01em; }
 .g-label .g-num { font-weight: 400; letter-spacing: 0; }
 .g-num { color: var(--ink3); font-size: var(--s1); }
 .g-count { padding-left: 12px; color: var(--ink2); font-size: var(--s1); white-space: nowrap; }
+.g-n { font-size: var(--s1); font-weight: 400; letter-spacing: 0; color: var(--ink2); white-space: nowrap; }
+.h-est, .h-due { flex: none; font-size: var(--s1); text-align: right; white-space: nowrap; }
+.h-est { color: var(--ink); font-weight: 600; }
+.h-due { display: none; color: var(--ink3); }
 .group.other .g-label { color: var(--ink2); }
 
 /* řádek: kroužek · název a šedá řádka · odhad a termín */
@@ -120,14 +128,24 @@ ul.rows { list-style: none; margin: 0; padding: 0; }
 .sub { display: block; margin-top: 2px; font-size: var(--s1); line-height: 1.4; color: var(--ink2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .sub .sep { color: var(--ink3); padding: 0 5px; }
 .sub .navrh { color: var(--claude); font-weight: 600; }
+.sub .waited { color: var(--ink2); }
+.sub .waited.long { color: var(--wait); font-weight: 600; }
+.add-preview { margin: -2px 0 8px; padding: 0 12px 0 44px; font-size: var(--s1); color: var(--ink2); }
+.add-preview .sep { color: var(--ink3); padding: 0 5px; }
+.add-preview .fire-t { color: var(--fire); font-weight: 600; }
 .aside { flex: none; display: flex; align-items: baseline; gap: 14px; padding-top: 1px; }
 .est, .due { font-size: var(--s1); line-height: 1.4; white-space: nowrap; }
 .est { color: var(--ink3); }
+.est:empty { display: none; }
 .due { color: var(--ink2); }
 .due:empty { display: none; }
 .due.is-today { color: var(--ink); font-weight: 600; }
 .due.is-over { color: var(--fire); font-weight: 600; }
-@media (min-width: 600px) { .due, .due:empty { display: inline-block; min-width: 58px; text-align: right; } }
+/* od 600 px pevné sloupce: odhad a termín v řádcích i v záhlaví zakázky pod sebou */
+@media (min-width: 600px) {
+  .est, .est:empty, .h-est { display: inline-block; width: var(--c-est); text-align: right; }
+  .due, .due:empty, .h-due { display: inline-block; width: var(--c-due); text-align: right; }
+}
 
 /* kroužek; odškrtnutí vyplní kroužek a objeví se fajfka */
 .check { flex: none; position: relative; width: 20px; height: 20px; margin-top: 1px; border: 1.5px solid var(--ink3); border-radius: 50%; transition: border-color .2s var(--ease), background .2s var(--ease); }

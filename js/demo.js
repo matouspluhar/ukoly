@@ -19,7 +19,7 @@ function seed() {
   const list = [
     { nazev: 'Odevzdat DPS fasády', zakazka: 2612, termin: today, ohen: true, odhad: '2 h', dalsi_krok: 'Projít výkresy D.1.2 proti tabulce změn   # NÁVRH',
       souvislosti: 'Navazuje na kontrolu detailů oplechování. Před odevzdáním projít katalogové listy.' },
-    { nazev: 'Opravit situaci pro DPZ', zakazka: 2612, termin: day(2), odhad: 'půlden', ceka_na: 'Adam – půdorysy obou schodišť' },
+    { nazev: 'Opravit situaci pro DPZ', zakazka: 2612, termin: day(2), odhad: 'půlden', ceka_na: 'Adam – půdorysy obou schodišť', ceka_od: day(-9) },
     { nazev: 'Nakreslit detail soklu', zakazka: 2612, termin: day(9), odhad: '2 h', dalsi_krok: 'Vyjmout řez z modelu a doplnit kóty' },
     { nazev: 'Poslat fakturu za studii', zakazka: 2609, termin: day(-2), odhad: '15 min' },
     { nazev: 'Zavolat investorovi kvůli statice', zakazka: 2609, termin: day(3), odhad: '30 min' },

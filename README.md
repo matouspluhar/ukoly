@@ -31,8 +31,12 @@ Bez build kroku a bez závislostí za běhu kromě MSAL.
 - Jedno písmo, tři velikosti (`--s1`, `--s2`, `--s3`). Hierarchii nese tloušťka a odstín, ne verzálky a čáry.
 - Barva jen jako signál: červená (`--fire`) = hoří – oheň (červený tučný název) a termín po splatnosti; oranžová (`--claude`) = návrh Clauda. Všechny barvy jsou proměnné, tmavý režim je jen přemapuje.
 - Přechody: jedna křivka (`--ease`, v app.js `EASE`), 160–280 ms; při „omezit pohyb“ v systému se neanimuje nic.
-- Záhlaví zakázky ve Všech je přilepené nahoře a ukazuje počet úkolů a součet odhadů.
+- Záhlaví zakázky ve Všech je přilepené nahoře; součet ve sloupci odhadů je jen práce, která nečeká, čekající hodiny a úkoly bez odhadu stojí zvlášť za názvem.
 - Rozvržení: do 960 px jeden sloupec se záložkami; od 960 px postranní panel se zakázkami; od 1240 px detail vpravo vedle seznamu.
+
+## Rychlé přidání a čekání
+- Řádek „2612 nakreslit sokl pá 2h !“ = zakázka (první slovo, číslo nebo kód ze ZAKAZKY.md), termín (dnes, zítra, po–ne a D. M. jen na konci řádku), odhad (2h, 30 min, půlden), oheň (!). Náhled pod polem ukazuje, co se rozpoznalo. Parser je `parseQuickAdd` ve format.js, testy v test/quick.test.mjs.
+- Čekající úkol ukazuje „čekám N dní“ od pole `ceka_od`, jinak od posledního řádku Průběhu o čekání, jinak od vytvoření; po 7 dnech šedomodře (`--wait`).
 
 ## Jak to drží pohromadě
 - Každá změna jde nejdřív do IndexedDB, pak do fronty. Zápis vždy vychází z čerstvé verze souboru (eTag) a mění jen pole aplikace (`APP_FIELDS`), poznámku a Průběh. Pole a sekce od Clauda zůstanou netknuté.
