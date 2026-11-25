@@ -8,13 +8,22 @@ const UKOLY = 'f-ukoly', HOTOVO = 'f-hotovo';
 
 function seed() {
   const today = localDate();
+  const d = new Date(); const plus = (n) => { const x = new Date(d); x.setDate(x.getDate() + n); return localDate(x); };
   const files = {};
-  const add = (id, name, text) => { files[id] = { id, name, parent: UKOLY, text, v: 1 }; };
-  add('d1', '20261124-1631 koupit-mleko.md', applyPatch(newTaskText({ nazev: 'Koupit mléko', note: 'mléko, rohlíky, máslo' }), { fields: { muj_den: today } }).replace('zdroj: app', 'zdroj: claude'));
-  add('d2', '20261120-0900 skola-odevzdat-dps-fasady.md', newTaskText({ nazev: 'Škola – odevzdat DPS fasády', termin: today, ohen: true }).replace('zakazka:', 'zakazka: 2612').replace('## Souvislosti\n', '## Souvislosti\nNavazuje na kontrolu detailů oplechování. Před odevzdáním projít katalogové listy.\n'));
-  add('d3', '20261121-1015 zavolat-investorovi.md', newTaskText({ nazev: 'Zavolat investorovi kvůli statice', termin: '2026-12-01' }).replace('zakazka:', 'zakazka: 2609'));
-  add('d4', '20261122-1800 precist-kapitolu-o-zettelkastenu.md', newTaskText({ nazev: 'Přečíst kapitolu o Zettelkastenu' }));
-  add('d5', '20261122-1900 penize-zalohy.md', newTaskText({ nazev: 'Peníze – zkontrolovat zálohy' }));
+  const add = (id, name, text, extra = {}) => {
+    const lines = Object.entries(extra).map(([k, v]) => `${k}: ${v}`).join('\n');
+    files[id] = { id, name, parent: UKOLY, text: lines ? text.replace(/^zakazka:.*$/m, (m) => (extra.zakazka ? '' : m + '\n') + lines) : text, v: 1 };
+  };
+  add('d1', '20261124-1631 koupit-mleko.md', applyPatch(newTaskText({ nazev: 'Koupit mléko', note: 'mléko, rohlíky, máslo' }), { fields: { muj_den: today } }).replace('zdroj: app', 'zdroj: claude'), { odhad: '15 min' });
+  add('d2', '20261120-0900 odevzdat-dps-fasady.md', newTaskText({ nazev: 'Odevzdat DPS fasády', termin: today, ohen: true }).replace('## Souvislosti\n', '## Souvislosti\nNavazuje na kontrolu detailů oplechování. Před odevzdáním projít katalogové listy.\n'),
+    { zakazka: 2612, odhad: '2 h', dalsi_krok: 'Projít výkresy D.1.2 proti tabulce změn   # NÁVRH' });
+  add('d3', '20261121-1015 zavolat-investorovi.md', newTaskText({ nazev: 'Zavolat investorovi kvůli statice', termin: plus(3) }), { zakazka: 2609, odhad: '30 min' });
+  add('d4', '20261122-1800 precist-kapitolu-o-zettelkastenu.md', newTaskText({ nazev: 'Přečíst kapitolu o Zettelkastenu' }), { odhad: '1 h' });
+  add('d5', '20261122-1900 zkontrolovat-zalohy.md', newTaskText({ nazev: 'Zkontrolovat zálohy' }), { zakazka: 'PENÍZE', odhad: '30 min' });
+  add('d6', '20261123-0800 situace-pro-dpz.md', newTaskText({ nazev: 'Opravit situaci pro DPZ', termin: plus(2) }), { zakazka: 2612, odhad: 'půlden', ceka_na: 'Adam – půdorysy obou schodišť' });
+  add('d7', '20261119-0800 poslat-fakturu.md', newTaskText({ nazev: 'Poslat fakturu za studii', termin: plus(-2) }), { zakazka: 2609, odhad: '15 min' });
+  add('d8', '20261118-0800 detail-soklu.md', newTaskText({ nazev: 'Nakreslit detail soklu', termin: plus(9) }), { zakazka: 2612, odhad: '2 h', dalsi_krok: 'Vyjmout řez z modelu a doplnit kóty' });
+  add('d9', '20261118-0900 ucebnice-kapitola.md', newTaskText({ nazev: 'Připravit cvičení na rozpočet' }), { zakazka: 'TUL', odhad: '2 h', muj_den: today });
   return { files };
 }
 

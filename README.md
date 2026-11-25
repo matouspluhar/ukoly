@@ -6,7 +6,7 @@ Zadání: `MYSLENI/01_ZADANI_APLIKACE_UKOLY.md`, formát úkolu: `MYSLENI/00_SYS
 - Ostrá verze: https://matouspluhar.github.io/ukoly/
 - Demo bez přihlášení: https://matouspluhar.github.io/ukoly/?demo
 - Testy: `npm test` (formát, skupiny, fronta a synchronizace)
-- Bez build kroku; MSAL Browser 4.30.0 (LTS) ve `vendor/`, písma IBM Plex Sans a Barlow Condensed (OFL) ve `fonts/`.
+- Bez build kroku; MSAL Browser 4.30.0 (LTS) ve `vendor/`, písmo IBM Plex Sans (OFL) ve `fonts/`.
 - Názvy zakázek nejsou v kódu – čtou se ze soukromého `MYSLENI/ZAKAZKY.md`.
 
 ## Vydání nové verze

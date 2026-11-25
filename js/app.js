@@ -4,7 +4,7 @@ import { createDemoBackend } from './demo.js';
 import { Sync, makeTask } from './sync.js';
 import { applyPatch, newTaskText, fileName, compareTasks, isOpen, inMyDay, localDate, localDateTime, groupOf, groupTasks, dueLabel, parseZakazky, parseTask, odhadMin } from './format.js';
 
-export const APP_VERSION = '2.5';
+export const APP_VERSION = '3.0';
 const DEMO = new URLSearchParams(location.search).has('demo');
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -23,7 +23,6 @@ const DONE_LINES = [
   'Hotovo. Na tohle už myslet nemusíš.',
   'Splněno. Disciplína = svoboda.',
   'Vyřízeno. Dalších pět minut slávy.',
-  'Hotovo. Razítko sedí.',
 ];
 const PLACEHOLDERS = ['Přidat úkol', 'Co nesmíš zapomenout?', 'Co tě napadlo?', 'Přidat úkol'];
 const isDone = (t) => t.fm.stav === 'hotovo';
@@ -39,32 +38,36 @@ let doneOpen = localStorage.getItem('ukoly-done-open') === '1';
 // ---------- vykreslení ----------
 const DNY = ['neděle', 'pondělí', 'úterý', 'středa', 'čtvrtek', 'pátek', 'sobota'];
 const MES = ['ledna', 'února', 'března', 'dubna', 'května', 'června', 'července', 'srpna', 'září', 'října', 'listopadu', 'prosince'];
+const WIDE = matchMedia('(min-width: 1240px)');
 
 const odhadLabel = (min) => !min ? '' : min < 60 ? `${min} min` : min === 240 ? '½ dne' : min === 480 ? 'den' : `${String(+(min / 60).toFixed(1)).replace('.', ',')} h`;
+// Kód oblasti (PENÍZE, OSOBNÍ) jako běžné slovo; zkratky (HSN, TUL) a názvy ze ZAKAZKY.md beze změny.
+const labelOf = (g) => g.key.startsWith('z:') && !g.num
+  ? (names[g.label] || (g.label.length > 3 ? g.label[0] + g.label.slice(1).toLowerCase() : g.label))
+  : (g.label || g.num);
+const projName = (g) => g.key === 'ostatni' ? '' : labelOf(g);
 
-function rowHtml(t, title, cap, today) {
+// Řádek: název, pod ním jedna šedá řádka (zakázka · další krok / na co čeká), vpravo termín a odhad.
+function rowHtml(t, title, g, today, showProj) {
   const due = dueLabel(t.fm.termin, today);
   const wait = t.fm.ceka_na;
   const krok = t.fm.dalsi_krok;
   const od = odhadLabel(odhadMin(t.fm.odhad));
-  return `<li class="row${t.fm.ohen ? ' fire' : ''}${t.note ? ' has-note' : ''}${wait ? ' waiting' : ''}" data-id="${esc(t.id)}">
+  const parts = [];
+  if (showProj && g && projName(g)) parts.push(`<span class="proj">${esc(projName(g))}</span>`);
+  if (wait) parts.push(`čeká na ${esc(wait)}`);
+  else if (krok) parts.push(`${esc(krok)}`);
+  if (t.fm.navrh === today) parts.push('<span class="navrh">návrh Clauda</span>');
+  const sub = parts.join('<span class="sep">·</span>');
+  return `<li class="row${t.fm.ohen ? ' fire' : ''}${t.note ? ' has-note' : ''}${wait ? ' waiting' : ''}${t.id === openId ? ' sel' : ''}" data-id="${esc(t.id)}">
     <button class="check" aria-label="Hotovo"></button>
-    <span class="body">${cap ? `<span class="cap">${cap}</span>` : ''}<span class="title">${esc(title)}</span>${
-      wait ? `<span class="sub wait">čeká: ${esc(wait)}</span>` : krok ? `<span class="sub">→ ${esc(krok)}</span>` : ''}</span>
-    ${od ? `<span class="est">${od}</span>` : ''}
-    ${t.fm.ohen ? '<span class="flame" aria-label="Oheň">🔥</span>' : ''}
-    ${due ? `<span class="due${due.today ? ' is-today' : ''}${due.overdue ? ' is-over' : ''}">${due.text}</span>` : ''}
+    <span class="body"><span class="title">${esc(title)}${t.fm.ohen ? ' <span class="flame" aria-label="Oheň">🔥</span>' : ''}</span>${sub ? `<span class="sub">${sub}</span>` : ''}</span>
+    <span class="aside">${od ? `<span class="est">${od}</span>` : ''}<span class="due${due?.today ? ' is-today' : ''}${due?.overdue ? ' is-over' : ''}">${due ? due.text : ''}</span></span>
   </li>`;
 }
 
-function capOf(g, t, today) {
-  const navrh = t && t.fm.navrh === today ? '<i>návrh Clauda</i>' : '';
-  if (g.key === 'ostatni') return navrh.replace('<i>', '<i class="solo">');
-  return `${g.num ? `<b>${esc(g.num)}</b>` : ''}${esc(g.label)}${navrh}`;
-}
-
 let renderQueued = false;
-let holdUntil = 0;     // během animace razítka nepřekreslovat
+let holdUntil = 0;     // během animace odškrtnutí nepřekreslovat
 let lastHtml = '';
 function render() {
   if (renderQueued) return;
@@ -77,39 +80,54 @@ function render() {
   });
 }
 
+function sideHtml(groups) {
+  return groups.map((g) => `<button class="sg${view === 'g:' + g.key ? ' active' : ''}${g.items.some(({ t }) => t.fm.ohen) ? ' fire' : ''}" data-view="g:${esc(g.key)}">
+    <span class="l">${esc(labelOf(g))}${g.num && g.label ? ` <span class="num">${esc(g.num)}</span>` : ''}</span><span class="n">${g.items.length}</span></button>`).join('');
+}
+
 function renderNow() {
   const now = new Date();
   const today = localDate(now);
   const open = tasks.filter(isOpen);
   const den = open.filter((t) => inMyDay(t, today));
-  document.body.classList.toggle('wide', view === 'vse');
-  document.querySelectorAll('.tab').forEach((b) => b.classList.toggle('active', b.dataset.view === view));
-  $('#count-den').textContent = den.length || '';
-  $('#count-vse').textContent = open.length || '';
-  $('#today').textContent = `${DNY[now.getDay()]} ${now.getDate()}. ${MES[now.getMonth()]}`;
+  const groups = groupTasks(open, names);
+  if (view.startsWith('g:') && !groups.some((g) => 'g:' + g.key === view)) view = 'vse';
+  const group = view.startsWith('g:') ? groups.find((g) => 'g:' + g.key === view) : null;
 
-  let html;
-  const doneList = view === 'den' ? doneToday(today) : doneSince(7);
+  document.querySelectorAll('.tab, .sv').forEach((b) => b.classList.toggle('active', b.dataset.view === view));
+  const setN = (id, n) => { $(id).textContent = n || ''; };
+  setN('#count-den', den.length); setN('#count-vse', open.length);
+  setN('#count-den-side', den.length); setN('#count-vse-side', open.length);
+  const dateText = `${DNY[now.getDay()]} ${now.getDate()}. ${MES[now.getMonth()]}`;
+  $('#today').textContent = dateText;
+  $('#today-side').textContent = dateText;
+  $('#side-groups').innerHTML = sideHtml(groups);
+  $('#view-title').innerHTML = view === 'den' ? 'Můj den' : view === 'vse' ? 'Všechny'
+    : `${esc(labelOf(group))}${group.num && group.label ? `<span class="num">${esc(group.num)}</span>` : ''}`;
+
+  const doneList = view === 'den' ? doneToday(today) : view === 'vse' ? doneSince(7) : [];
   const done = doneToday(today).length;
   const total = den.length + done;
   $('#progress').hidden = view !== 'den' || total === 0;
   const zbyva = den.filter((t) => !t.fm.ceka_na).reduce((a, t) => a + odhadMin(t.fm.odhad), 0);
-  $('#progress').innerHTML = `<span class="bar"><span style="width:${total ? Math.round(100 * done / total) : 0}%"></span></span><span class="lbl">${done} z ${total}${zbyva ? ` · zbývá ≈ ${odhadLabel(zbyva)}` : ''}</span>`;
-  $('#progress').classList.toggle('full', total > 0 && den.length === 0);
+  $('#progress').innerHTML = `<span class="bar"><span style="width:${total ? Math.round(100 * done / total) : 0}%"></span></span><span class="lbl">${done} z ${total} hotovo${zbyva ? ` · zbývá asi ${odhadLabel(zbyva)}` : ''}</span>`;
   const fires = open.filter((t) => t.fm.ohen).length;
 
+  let html;
   if (view === 'den') {
     html = den.length
-      ? `<ul class="rows">${den.sort(compareTasks).map((t) => { const g = groupOf(t, names); return rowHtml(t, g.title, capOf(g, t, today), today); }).join('')}</ul>`
+      ? `<ul class="rows">${den.sort(compareTasks).map((t) => { const g = groupOf(t, names); return rowHtml(t, g.title, g, today, true); }).join('')}</ul>`
       : done
-        ? '<p class="empty win"><span class="stamp big">Den<br>dobyt</span><em>„Nic není psáno.“ — Lawrence z Arábie</em></p>'
-        : '<p class="empty"><b>Prázdný den.</b>Buď klid před bouří, nebo plán ještě spí.<br>Přidej úkol nahoře nebo ho vyber ve Všech.</p>';
+        ? '<p class="empty"><b>Den je hotový.</b>Všechno z Mého dne je odškrtnuté.<em>„Nic není psáno.“ — Lawrence z Arábie</em></p>'
+        : '<p class="empty"><b>Prázdný den.</b>Přidej úkol nahoře nebo ho vyber ve Všech.</p>';
+  } else if (group) {
+    html = `<ul class="rows">${group.items.map(({ t, title }) => rowHtml(t, title, group, today, false)).join('')}</ul>`;
   } else {
-    html = (fires > 3 ? `<p class="alarm">🔥 ${fires}× oheň. To už není oheň, to je požár.</p>` : '') + (open.length
-      ? groupTasks(open, names).map((g) => `
+    html = (fires > 3 ? `<p class="alarm"><b>${fires}× oheň.</b> Když hoří všechno, nehoří nic – vyber jeden.</p>` : '') + (open.length
+      ? groups.map((g) => `
         <section class="group${g.key === 'ostatni' ? ' other' : ''}">
-          <div class="g-head">${g.num ? `<span class="g-num">${esc(g.num)}</span>` : ''}<span class="g-label">${esc(g.label)}</span><span class="g-count">${g.items.length}</span></div>
-          <ul class="rows">${g.items.map(({ t, title }) => rowHtml(t, title, '', today)).join('')}</ul>
+          <div class="g-head"><span class="g-label">${esc(labelOf(g))}</span>${g.num && g.label ? `<span class="g-num">${esc(g.num)}</span>` : ''}<span class="g-count">${g.items.length}</span></div>
+          <ul class="rows">${g.items.map(({ t, title }) => rowHtml(t, title, g, today, false)).join('')}</ul>
         </section>`).join('')
       : '<p class="empty"><b>Žádné otevřené úkoly.</b>Podezřelé. Ale budiž.</p>');
   }
@@ -119,8 +137,8 @@ function renderNow() {
       const when = view === 'den' ? '' : dueLabel(doneOn(t), today);
       return `<li class="row is-done" data-id="${esc(t.id)}">
         <button class="check" aria-label="Vrátit mezi otevřené"></button>
-        <span class="body">${view === 'vse' && g.key !== 'ostatni' ? `<span class="cap">${capOf(g)}</span>` : ''}<span class="title">${esc(g.title)}</span></span>
-        ${when ? `<span class="due">${when.text}</span>` : ''}
+        <span class="body"><span class="title">${esc(g.title)}</span>${view === 'vse' && projName(g) ? `<span class="sub">${esc(projName(g))}</span>` : ''}</span>
+        <span class="aside">${when ? `<span class="due">${when.text}</span>` : ''}</span>
       </li>`;
     }).join('');
     html += `<details class="done-list"${doneOpen ? ' open' : ''}>
@@ -131,6 +149,14 @@ function renderNow() {
   const det = $('#list .done-list');
   if (det) det.ontoggle = () => { doneOpen = det.open; try { localStorage.setItem('ukoly-done-open', doneOpen ? '1' : '0'); } catch { /* nic */ } };
   if (openId) renderDetail();
+}
+
+function setView(v) {
+  if (view === v) return;
+  view = v; try { localStorage.setItem('ukoly-view', view); } catch { /* nic */ }
+  const l = $('#list'); l.classList.remove('view-in'); void l.offsetWidth; l.classList.add('view-in');
+  scrollTo(0, 0);
+  render();
 }
 
 async function loadNames() {
@@ -221,10 +247,14 @@ function showToast(msg, undo, label = 'Vrátit') {
 
 // ---------- detail ----------
 function openDetail(id) {
+  if (openId && openId !== id) saveDetailText();
   openId = id;
   $('#detail').hidden = false;
-  document.body.classList.add('noscroll');
+  document.body.classList.add('noscroll', 'pane');
+  document.querySelectorAll('.row.sel').forEach((r) => r.classList.remove('sel'));
+  document.querySelector(`.row[data-id="${CSS.escape(id)}"]`)?.classList.add('sel');
   renderDetail(true);
+  if (!WIDE.matches) $('#detail').scrollTop = 0;
 }
 
 function renderDetail(first = false) {
@@ -233,11 +263,12 @@ function renderDetail(first = false) {
   const today = localDate();
   if (first) {
     $('#d-name').value = t.fm.nazev || '';
+    requestAnimationFrame(fitName);
     $('#d-note').value = t.note || '';
     $('#d-due').value = t.fm.termin || '';
   }
   const g = groupOf(t, names);
-  $('#d-group').innerHTML = g.key === 'ostatni' ? '' : `${g.num ? `<b>${esc(g.num)}</b>` : ''}${esc(g.label)}`;
+  $('#d-group').innerHTML = g.key === 'ostatni' ? '' : `${esc(labelOf(g))}${g.num && g.label ? `<span class="g-num">${esc(g.num)}</span>` : ''}`;
   const md = t.fm.muj_den === today;
   $('#d-myday').classList.toggle('on', md); $('#d-myday').setAttribute('aria-checked', md);
   $('#d-fire').classList.toggle('on', !!t.fm.ohen); $('#d-fire').setAttribute('aria-checked', !!t.fm.ohen);
@@ -254,6 +285,8 @@ function renderDetail(first = false) {
   $('#d-meta').textContent = [t.fm.zdroj && `zdroj: ${t.fm.zdroj}`, t.fm.vytvoreno && `vytvořeno ${t.fm.vytvoreno.replace('T', ' ')}`].filter(Boolean).join(' · ');
 }
 
+function fitName() { const n = $('#d-name'); n.style.height = 'auto'; n.style.height = n.scrollHeight + 'px'; }
+
 async function saveDetailText() {
   const t = tasks.find((x) => x.id === openId);
   if (!t) return;
@@ -269,16 +302,17 @@ async function closeDetail(save = true) {
   if (save) await saveDetailText();
   openId = null;
   $('#detail').hidden = true;
-  document.body.classList.remove('noscroll');
+  document.body.classList.remove('noscroll', 'pane');
+  document.querySelectorAll('.row.sel').forEach((r) => r.classList.remove('sel'));
 }
 
 // ---------- start ----------
 function bind() {
-  document.querySelectorAll('.tab').forEach((b) => b.onclick = () => {
-    if (view === b.dataset.view) return;
-    view = b.dataset.view; localStorage.setItem('ukoly-view', view);
-    const l = $('#list'); l.classList.remove('view-in'); void l.offsetWidth; l.classList.add('view-in');
-    render();
+  document.querySelectorAll('.tab, .sv').forEach((b) => b.onclick = () => setView(b.dataset.view));
+  $('#side-groups').onclick = (e) => { const b = e.target.closest('.sg'); if (b) setView(b.dataset.view); };
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && openId) { closeDetail(true); return; }
+    if (e.key === 'n' && !openId && !/INPUT|TEXTAREA/.test(document.activeElement?.tagName || '')) { e.preventDefault(); $('#add-input').focus(); }
   });
   $('#add').onsubmit = (e) => { e.preventDefault(); const i = $('#add-input'); addTask(i.value); i.value = ''; };
   $('#list').onclick = (e) => {
@@ -288,11 +322,11 @@ function bind() {
     if (e.target.closest('.check')) {
       if (row.classList.contains('done')) return;
       row.classList.add('done');
-      row.insertAdjacentHTML('beforeend', '<span class="stamp">Hotovo</span>');
       navigator.vibrate?.(12);
-      holdUntil = Date.now() + 700;
-      setTimeout(() => complete(row.dataset.id), 650);
+      holdUntil = Date.now() + 520;
+      setTimeout(() => complete(row.dataset.id), 480);
     }
+    else if (openId === row.dataset.id && WIDE.matches) closeDetail(true);
     else openDetail(row.dataset.id);
   };
   $('#refresh').onclick = () => { sync.kick(); loadNames(); };
@@ -311,7 +345,7 @@ function bind() {
   $('#d-done').onclick = async () => { const id = openId; await closeDetail(true); complete(id); };
   let typing = null;
   const saveSoon = () => { clearTimeout(typing); typing = setTimeout(saveDetailText, 900); };
-  $('#d-name').oninput = saveSoon;
+  $('#d-name').oninput = () => { fitName(); saveSoon(); };
   $('#d-note').oninput = saveSoon;
   $('#d-name').onblur = () => { clearTimeout(typing); saveDetailText(); };
   $('#d-note').onblur = () => { clearTimeout(typing); saveDetailText(); };
@@ -392,7 +426,17 @@ async function main() {
   let signed = false;
   try { signed = await backend.init(); } catch (e) { console.error(e); }
   $('#who').textContent = backend.userName();
-  if (!signed) { $('#signin').hidden = false; return; }
+  if (!signed) {
+    $('#signin').hidden = false;
+    // Prohlížeč zahodil přihlášení (MSAL v4 po zavření okna bez „Zůstat přihlášeni“):
+    // známý účet přihlásíme znovu sami, jednou za relaci, bez výběru účtu.
+    if (backend.canAutoLogin?.()) {
+      $('#signin-msg').textContent = 'Přihlašuji…';
+      $('#login').hidden = true;
+      backend.login();
+    }
+    return;
+  }
   $('#signin').hidden = true;
   sync.kick();
   loadNames();

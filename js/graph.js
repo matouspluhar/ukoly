@@ -3,6 +3,8 @@ import { CONFIG } from '../config.js';
 
 const GRAPH = 'https://graph.microsoft.com/v1.0';
 const SCOPES = ['Files.ReadWrite'];
+const HINT = 'ukoly-login-hint';   // e-mail posledního účtu – jen pro předvyplnění přihlášení
+const AUTO = 'ukoly-auto-login';   // pojistka proti smyčce přesměrování
 
 export class GraphError extends Error {
   constructor(status, msg, retryAfter) { super(msg || `Graph ${status}`); this.status = status; this.retryAfter = retryAfter; }
@@ -84,15 +86,33 @@ export function createGraphBackend() {
         if (res?.account) account = res.account;
       } catch (e) { console.warn('redirect', e); }
       account = account || pca.getAllAccounts()[0] || null;
-      if (account) pca.setActiveAccount(account);
+      if (account) {
+        pca.setActiveAccount(account);
+        try { localStorage.setItem(HINT, account.username); sessionStorage.removeItem(AUTO); } catch { /* nic */ }
+      }
       return !!account;
+    },
+
+    // Jednou za relaci smí aplikace přihlásit známý účet sama (bez klepnutí a výběru účtu).
+    canAutoLogin() {
+      try {
+        if (!localStorage.getItem(HINT) || sessionStorage.getItem(AUTO)) return false;
+        sessionStorage.setItem(AUTO, '1');
+        return true;
+      } catch { return false; }
     },
 
     signedIn: () => !!account,
     userName: () => account?.username || '',
-    login: () => pca.loginRedirect({ scopes: SCOPES, prompt: 'select_account' }),
-    reauth: () => pca.acquireTokenRedirect({ scopes: SCOPES, account }),
-    logout: () => pca.logoutRedirect({ account, postLogoutRedirectUri: appBaseUrl() }),
+    login: () => {
+      const hint = (() => { try { return localStorage.getItem(HINT); } catch { return null; } })();
+      return pca.loginRedirect(hint ? { scopes: SCOPES, loginHint: hint } : { scopes: SCOPES, prompt: 'select_account' });
+    },
+    reauth: () => pca.acquireTokenRedirect({ scopes: SCOPES, account, loginHint: account?.username }),
+    logout: () => {
+      try { localStorage.removeItem(HINT); } catch { /* nic */ }
+      return pca.logoutRedirect({ account, postLogoutRedirectUri: appBaseUrl() });
+    },
 
     folderId: () => folderId(CONFIG.folder),
 

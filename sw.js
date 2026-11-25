@@ -1,15 +1,14 @@
 // Service worker: aplikace startuje okamžitě z mezipaměti a funguje bez sítě.
 // Nová verze = změnit VERSION. Prohlížeč pak stáhne celé nové vydání na pozadí
 // a aplikace nabídne „Načíst“. Data (Graph) se tu neukládají – ty drží IndexedDB.
-const VERSION = 'ukoly-v8';
+const VERSION = 'ukoly-v9';
 const SHELL = [
   './', 'index.html', 'styles.css', 'config.js', 'manifest.webmanifest',
   'js/app.js', 'js/format.js', 'js/graph.js', 'js/demo.js', 'js/store.js', 'js/sync.js',
   'vendor/msal-browser.min.js',
   'fonts/ibm-plex-sans-latin-400-normal.woff2', 'fonts/ibm-plex-sans-latin-500-normal.woff2', 'fonts/ibm-plex-sans-latin-600-normal.woff2',
   'fonts/ibm-plex-sans-latin-ext-400-normal.woff2', 'fonts/ibm-plex-sans-latin-ext-500-normal.woff2', 'fonts/ibm-plex-sans-latin-ext-600-normal.woff2',
-  'fonts/barlow-condensed-latin-600-normal.woff2', 'fonts/barlow-condensed-latin-ext-600-normal.woff2',
-  'icons/icon-192.png', 'icons/icon-512.png', 'icons/maskable-512.png',
+  'icons/ukoly3-192.png', 'icons/ukoly3-512.png', 'icons/ukoly3-maskable-512.png',
 ];
 
 self.addEventListener('install', (e) => {
