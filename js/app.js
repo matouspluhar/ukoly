@@ -9,7 +9,7 @@ import {
   groupOf, groupTasks, dueLabel, parseZakazky, parseTask, odhadMin, odhadLabel,
 } from './format.js';
 
-export const APP_VERSION = '3.3';   // při změně uprav i VERSION v sw.js (hlídá test/release.test.mjs)
+export const APP_VERSION = '3.4';   // při změně uprav i VERSION v sw.js (hlídá test/release.test.mjs)
 
 const DEMO = new URLSearchParams(location.search).has('demo');
 const WIDE = matchMedia('(min-width: 1240px)');   // detail jako pravý panel – shodně se styles.css
@@ -17,6 +17,11 @@ const DONE_DAYS = 7;                               // hotové ve „Všech“ (O
 const UNDO_MS = 5000;
 
 const $ = (s) => document.querySelector(s);
+// Pohyb: jedna křivka a krátké časy (160–280 ms); při „omezit pohyb“ v systému se nic neanimuje.
+const EASE = 'cubic-bezier(.2, .8, .2, 1)';
+const REDUCED = matchMedia('(prefers-reduced-motion: reduce)');
+const anim = (el, frames, opts) => (!el?.animate || REDUCED.matches ? Promise.resolve()
+  : el.animate(frames, { easing: EASE, ...opts }).finished.catch(() => {}));
 const $$ = (s) => document.querySelectorAll(s);
 const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 const store = {
@@ -30,6 +35,7 @@ let names = {};                           // čísla a kódy → názvy ze ZAKAZ
 let view = store.get('ukoly-view', 'den'); // 'den' | 'vse' | 'g:<klíč skupiny>'
 let openId = null;                        // úkol otevřený v detailu
 let doneOpen = store.get('ukoly-done-open') === '1';
+const fresh = new Set();                  // právě přidané úkoly – při vykreslení jemně najedou
 let backend, db, sync;
 
 // ---------- texty ----------
@@ -87,10 +93,18 @@ function doneRowHtml(t, today, showWhen) {
 const rowsHtml = (list, today, showGroup) =>
   `<ul class="rows">${list.map((t) => rowHtml(t, groupOf(t, names), today, showGroup)).join('')}</ul>`;
 
+// „6 úkolů · celkem 9 h“ – počet úkolů a součet polí odhad (úkoly bez odhadu se nepočítají).
+const ukolu = (n) => `${n} ${n === 1 ? 'úkol' : n < 5 ? 'úkoly' : 'úkolů'}`;
+function groupSummary(list) {
+  const min = list.reduce((a, t) => a + odhadMin(t.fm.odhad), 0);
+  const total = min < 60 ? `${min} min` : `${String(+(min / 60).toFixed(1)).replace('.', ',')} h`;
+  return ukolu(list.length) + (min ? ` · celkem ${total}` : '');
+}
+
 function groupsHtml(groups, today) {
   return groups.map((g) => `
     <section class="group${g.key === 'ostatni' ? ' other' : ''}">
-      <div class="g-head"><span class="g-label">${esc(g.name)}</span>${g.num && g.label ? `<span class="g-num">${esc(g.num)}</span>` : ''}<span class="g-count">${g.items.length}</span></div>
+      <div class="g-head"><span class="g-label">${esc(g.name)}${g.num && g.label ? ` <span class="g-num">${esc(g.num)}</span>` : ''}</span><span class="g-count">${groupSummary(g.items.map(({ t }) => t))}</span></div>
       ${rowsHtml(g.items.map(({ t }) => t), today, false)}
     </section>`).join('');
 }
@@ -167,6 +181,10 @@ function renderNow() {
       + doneHtml(doneSince(daysAgo(DONE_DAYS)), today, 'Hotovo za týden', true);
   }
   if (html !== lastList) { $('#list').innerHTML = html; lastList = html; }
+  for (const id of fresh) {
+    anim($(`.row[data-id="${CSS.escape(id)}"]`), [{ opacity: 0, transform: 'translateY(-6px)' }, { opacity: 1, transform: 'none' }], { duration: 240 });
+    fresh.delete(id);
+  }
   if (openId) renderDetail();
 }
 
@@ -174,9 +192,9 @@ function setView(v) {
   if (view === v) return;
   view = v;
   store.set('ukoly-view', v);
-  const l = $('#list'); l.classList.remove('view-in'); void l.offsetWidth; l.classList.add('view-in');
   scrollTo(0, 0);
   render();
+  requestAnimationFrame(() => anim($('#list'), [{ opacity: 0, transform: 'translateY(4px)' }, { opacity: 1, transform: 'none' }], { duration: 220 }));
 }
 
 const STATUS = {
@@ -197,11 +215,20 @@ function setStatus(s) {
 let toastTimer = null;
 function showToast(msg, action = null, ms = UNDO_MS) {
   const el = $('#toast');
+  const wasHidden = el.hidden;
   el.innerHTML = `<span>${esc(msg)}</span>${action ? `<button>${esc(action.label)}</button>` : ''}`;
   el.hidden = false;
-  if (action) el.querySelector('button').onclick = () => { el.hidden = true; action.run(); };
+  if (wasHidden) anim(el, [{ opacity: 0, transform: 'translate(-50%, 14px)' }, { opacity: 1, transform: 'translate(-50%, 0)' }], { duration: 240 });
+  if (action) el.querySelector('button').onclick = () => { hideToast(); action.run(); };
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => { el.hidden = true; }, ms);
+  toastTimer = setTimeout(hideToast, ms);
+}
+async function hideToast() {
+  const el = $('#toast');
+  if (el.hidden) return;
+  clearTimeout(toastTimer);
+  await anim(el, [{ opacity: 1, transform: 'translate(-50%, 0)' }, { opacity: 0, transform: 'translate(-50%, 10px)' }], { duration: 180 });
+  el.hidden = true;
 }
 
 // ---------- změny úkolů (vždy nejdřív místně, pak do fronty) ----------
@@ -221,6 +248,7 @@ async function addTask(title) {
   const tempId = `tmp-${now.getTime()}-${Math.random().toString(36).slice(2, 6)}`;
   const text = newTaskText({ nazev, muj_den: view === 'den' ? localDate(now) : '' }, now);
   const filename = fileName(nazev, now);
+  fresh.add(tempId);
   await setLocal(makeTask(tempId, filename, text, null));
   await sync.enqueue({ type: 'create', tempId, filename, text });
 }
@@ -256,12 +284,17 @@ async function reopen(id) {
 }
 
 // Odškrtnutí: krátká animace v řádku, pak zápis (seznam se mezitím nepřekreslí).
+// Odškrtnutí: kroužek se vyplní, řádek zeslábne a plynule se zavře; pak zápis.
 function checkRow(row) {
   if (row.classList.contains('done')) return;
   row.classList.add('done');
   navigator.vibrate?.(12);
-  holdUntil = Date.now() + 520;
-  setTimeout(() => complete(row.dataset.id), 480);
+  holdUntil = Date.now() + 600;
+  const h = row.offsetHeight;
+  row.style.overflow = 'hidden';
+  anim(row, [{ height: `${h}px`, opacity: 0.35 }, { height: '0px', opacity: 0, paddingTop: '0px', paddingBottom: '0px' }],
+    { duration: 280, delay: 260, fill: 'forwards' });
+  setTimeout(() => complete(row.dataset.id), 560);
 }
 
 async function loadNames() {
@@ -277,18 +310,25 @@ async function loadNames() {
 // ---------- detail ----------
 function openDetail(id) {
   if (openId && openId !== id) saveDetailText();
+  const already = !!openId;
   openId = id;
   $('#detail').hidden = false;
   document.body.classList.add('pane');
   document.body.classList.toggle('noscroll', !WIDE.matches);
   $$('.row.sel').forEach((r) => r.classList.remove('sel'));
   $(`.row[data-id="${CSS.escape(id)}"]`)?.classList.add('sel');
+  const wasOpen = already;
   renderDetail(true);
   $('#detail').scrollTop = 0;
+  if (wasOpen && WIDE.matches) anim($('#detail .d-wrap'), [{ opacity: 0.3 }, { opacity: 1 }], { duration: 180 });
+  else anim($('#detail'), [{ opacity: 0, transform: `translateX(${WIDE.matches ? 12 : 28}px)` }, { opacity: 1, transform: 'none' }], { duration: 240 });
 }
 
 async function closeDetail(save = true) {
   if (save) await saveDetailText();
+  const closing = openId;
+  await anim($('#detail'), [{ opacity: 1, transform: 'none' }, { opacity: 0, transform: `translateX(${WIDE.matches ? 12 : 28}px)` }], { duration: 170 });
+  if (openId !== closing) return;   // mezitím otevřen jiný úkol
   openId = null;
   $('#detail').hidden = true;
   document.body.classList.remove('pane', 'noscroll');
@@ -362,6 +402,7 @@ function bind() {
     if (!e.target.matches('.done-list')) return;
     doneOpen = e.target.open;
     store.set('ukoly-done-open', doneOpen ? '1' : '0');
+    if (doneOpen) anim(e.target.querySelector('ul'), [{ opacity: 0, transform: 'translateY(-4px)' }, { opacity: 1, transform: 'none' }], { duration: 220 });
   }, true);
 
   $('#refresh').onclick = refreshAll;

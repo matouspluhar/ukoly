@@ -29,7 +29,9 @@ Bez build kroku a bez závislostí za běhu kromě MSAL.
 
 ## Vzhled
 - Jedno písmo, tři velikosti (`--s1`, `--s2`, `--s3`). Hierarchii nese tloušťka a odstín, ne verzálky a čáry.
-- Barva (`--accent`) jen pro úkol po termínu a oheň. Všechny barvy jsou proměnné, tmavý režim je jen přemapuje.
+- Barva jen jako signál: červená (`--fire`) = hoří – oheň (červený tučný název) a termín po splatnosti; oranžová (`--claude`) = návrh Clauda. Všechny barvy jsou proměnné, tmavý režim je jen přemapuje.
+- Přechody: jedna křivka (`--ease`, v app.js `EASE`), 160–280 ms; při „omezit pohyb“ v systému se neanimuje nic.
+- Záhlaví zakázky ve Všech je přilepené nahoře a ukazuje počet úkolů a součet odhadů.
 - Rozvržení: do 960 px jeden sloupec se záložkami; od 960 px postranní panel se zakázkami; od 1240 px detail vpravo vedle seznamu.
 
 ## Jak to drží pohromadě
